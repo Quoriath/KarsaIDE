@@ -6,6 +6,7 @@ mod terminal;
 mod database;
 mod cache;
 mod mcp;
+mod workspace;
 
 use file_system::*;
 use commands::*;
@@ -59,6 +60,9 @@ pub fn run() {
             apply_smart_patch,
             get_security_settings,
             update_security_settings,
+            scan_workspace,
+            scan_folder_shallow,
+            set_active_workspace,
         ])
         .setup(|_app| {
             log::info!("Karsa IDE setup complete");

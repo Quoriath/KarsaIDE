@@ -3,6 +3,7 @@ use crate::config_manager::{AIConfig, KarsaConfig, SessionData, load_config, sav
 use crate::terminal::{Terminal, ShellInfo};
 use crate::database::{Database, Conversation, Message};
 use crate::mcp::{MCPCore, MCPRequest, MCPResponse};
+use crate::workspace::{FileNode, scan_directory, quick_scan};
 use tauri::{command, AppHandle, State, Emitter};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -292,6 +293,47 @@ pub fn update_security_settings(
 ) -> Result<(), String> {
     let mut config = load_config();
     config.security = settings;
+    save_config(&config).map_err(|e| e.to_string())
+}
+
+// Workspace commands
+#[command]
+pub fn scan_workspace(path: String, depth: Option<usize>) -> Result<FileNode, String> {
+    scan_directory(&path, depth.unwrap_or(2))
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn scan_folder_shallow(path: String) -> Result<Vec<FileNode>, String> {
+    quick_scan(&path)
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn set_active_workspace(path: String) -> Result<(), String> {
+    let mut config = load_config();
+    
+    let timestamp = chrono::Utc::now().timestamp();
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+    
+    // Remove if exists
+    config.session.recent_workspaces.retain(|w| w.path != path);
+    
+    // Add to front
+    config.session.recent_workspaces.insert(0, crate::config_manager::RecentWorkspace {
+        path: path.clone(),
+        name,
+        last_opened: timestamp,
+    });
+    
+    // Keep last 10
+    config.session.recent_workspaces.truncate(10);
+    config.session.last_workspace = Some(path);
+    
     save_config(&config).map_err(|e| e.to_string())
 }
 
