@@ -239,9 +239,11 @@
     <div class="border-b border-border bg-muted/5 max-h-64 overflow-y-auto">
       <div class="p-2 space-y-1">
         {#each conversations as conv}
-          <button
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
             class={cn(
-              "w-full text-left px-3 py-2 rounded text-xs transition-colors flex items-center justify-between group",
+              "w-full text-left px-3 py-2 rounded text-xs transition-colors flex items-center justify-between group cursor-pointer",
               activeConversationId === conv.id 
                 ? "bg-primary/10 text-primary" 
                 : "hover:bg-muted text-muted-foreground"
@@ -252,16 +254,18 @@
               <div class="font-medium truncate">{conv.title}</div>
               <div class="text-[10px] opacity-70">{new Date(conv.updated_at).toLocaleDateString()}</div>
             </div>
-            <button
-              class="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded"
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded cursor-pointer"
               onclick={(e) => {
                 e.stopPropagation();
                 deleteConversation(conv.id);
               }}
             >
               <Trash2 size={12} class="text-destructive" />
-            </button>
-          </button>
+            </div>
+          </div>
         {/each}
         
         {#if conversations.length === 0}
