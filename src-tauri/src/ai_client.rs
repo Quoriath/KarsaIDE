@@ -265,6 +265,7 @@ impl AIClient {
         }
 
         let mut stream = response.bytes_stream();
+        let mut done_emitted = false;
 
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| format!("Stream error: {}", e))?;
@@ -274,7 +275,10 @@ impl AIClient {
                 if line.starts_with("data: ") {
                     let data = &line[6..];
                     if data == "[DONE]" {
-                        let _ = app.emit("ai-stream-done", ());
+                        if !done_emitted {
+                            let _ = app.emit("ai-stream-done", ());
+                            done_emitted = true;
+                        }
                         break;
                     }
 
@@ -298,7 +302,9 @@ impl AIClient {
             }
         }
 
-        let _ = app.emit("ai-stream-done", ());
+        if !done_emitted {
+            let _ = app.emit("ai-stream-done", ());
+        }
         Ok(())
     }
 }

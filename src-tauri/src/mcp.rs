@@ -196,6 +196,31 @@ impl MCPCore {
             r#"AVAILABLE MCP TOOLS:
 {}
 
+HOW TO USE TOOLS:
+When you need information from the codebase, respond with a JSON array of tool calls:
+
+[
+  {{
+    "name": "tool_name",
+    "arguments": {{
+      "param1": "value1"
+    }}
+  }}
+]
+
+After tool execution, you'll receive results. Then provide your final answer.
+
+EXAMPLE WORKFLOW:
+User: "Show me the project structure"
+You: [
+  {{
+    "name": "get_project_map",
+    "arguments": {{}}
+  }}
+]
+System: (tool results)
+You: "Here's your project structure: ..."
+
 TOOL USAGE PROTOCOL:
 1. SEARCH FIRST: Use 'search' to find relevant files
 2. MAP STRUCTURE: Use 'list_symbols' to see functions/classes
@@ -207,25 +232,17 @@ CONTEXT LIMITS:
 - ALWAYS check file size with get_file_info first
 - Use list_symbols before reading large files
 
-RESPONSE FORMAT:
-- Answer in natural language
-- When using tools, explain what you're doing
+RESPONSE RULES:
+- Use tools to verify information
 - Cite file paths and line numbers
 - Be direct and concise
-
-WORKFLOW EXAMPLE:
-User: "Find authentication code"
-You: "Let me search for authentication files..."
-[Use search tool]
-You: "Found src/auth.rs. Let me check its structure..."
-[Use list_symbols]
-You: "I can see the login function at lines 45-80. Here's what it does..."
-[Use file_read_range]
+- If you need multiple tools, call them in one array
+- After getting tool results, provide natural language answer
 
 NEVER:
-- Return raw JSON as response
+- Guess about code without using tools
 - Read entire large files without checking size
-- Guess about code without using tools"#,
+- Return only JSON without final answer"#,
             tools_json
         )
     }

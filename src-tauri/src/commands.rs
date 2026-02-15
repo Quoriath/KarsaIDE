@@ -150,6 +150,99 @@ pub async fn send_chat_completion_stream(
     client.send_chat_completion_stream(app, messages, &config).await
 }
 
+#[tauri::command]
+pub async fn send_agent_message_stream(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    messages: Vec<crate::ai_client::ChatMessage>,
+    config: AIConfig,
+) -> Result<(), String> {
+    let client = AIClient::new();
+    let max_iterations = 10;
+    let mut iteration = 0;
+    let mut conversation = messages;
+    
+    loop {
+        iteration += 1;
+        if iteration > max_iterations {
+            let _ = app.emit("ai-stream-chunk", "\n\n[Max iterations reached]".to_string());
+            let _ = app.emit("ai-stream-done", ());
+            break;
+        }
+        
+        // Get AI response (non-streaming for tool parsing)
+        let response = client.send_chat_completion(conversation.clone(), &config).await?;
+        
+        // Check for tool calls (JSON array format)
+        if let Some(tool_calls) = extract_tool_calls(&response) {
+            // Emit response before tool execution
+            let _ = app.emit("ai-stream-chunk", response.clone());
+            let _ = app.emit("ai-stream-chunk", "\n\n".to_string());
+            
+            for tool_call in tool_calls {
+                let tool_name = tool_call.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let arguments = tool_call.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+                
+                // Execute tool
+                let _ = app.emit("ai-stream-reasoning", format!("Executing: {}...", tool_name));
+                
+                let result = {
+                    let mcp = state.mcp.lock().map_err(|e| format!("Lock error: {}", e))?;
+                    let request = crate::mcp::MCPRequest {
+                        tool: tool_name.to_string(),
+                        params: arguments,
+                    };
+                    let response = mcp.execute(request);
+                    
+                    if response.success {
+                        format!("Tool '{}' result:\n{}", tool_name, 
+                            serde_json::to_string_pretty(&response.data).unwrap_or_default())
+                    } else {
+                        format!("Tool '{}' error: {}", tool_name, 
+                            response.error.unwrap_or_default())
+                    }
+                };
+                
+                // Add tool result to conversation
+                conversation.push(crate::ai_client::ChatMessage {
+                    role: "user".to_string(),
+                    content: result,
+                });
+            }
+            
+            // Continue loop to get next response
+            continue;
+        }
+        
+        // No tool calls - emit final response and done
+        for chunk in response.chars().collect::<Vec<_>>().chunks(50) {
+            let text: String = chunk.iter().collect();
+            let _ = app.emit("ai-stream-chunk", text);
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        
+        let _ = app.emit("ai-stream-done", ());
+        break;
+    }
+    
+    Ok(())
+}
+
+fn extract_tool_calls(text: &str) -> Option<Vec<serde_json::Value>> {
+    // Look for JSON array pattern: [{...}]
+    if let Some(start) = text.find('[') {
+        if let Some(end) = text.rfind(']') {
+            let json_str = &text[start..=end];
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
+                if !arr.is_empty() && arr[0].get("name").is_some() {
+                    return Some(arr);
+                }
+            }
+        }
+    }
+    None
+}
+
 // Database commands
 #[command]
 pub fn create_conversation(

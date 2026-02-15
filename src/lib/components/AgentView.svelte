@@ -303,7 +303,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
         custom_models: []
       };
 
-      await invoke('send_chat_completion_stream', {
+      await invoke('send_agent_message_stream', {
         messages: msgs,
         config: config
       });
