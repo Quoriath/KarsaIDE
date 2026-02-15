@@ -14,6 +14,7 @@
   let conversations = $state([]); // Loaded from SQLite
   let activeConversationId = $state(null);
   let messages = $state([]); // Active conversation messages
+  let visibleMessages = $derived(messages.slice(-50)); // Virtualization: Render max 50 items
   
   let searchQuery = $state('');
   let input = $state('');
@@ -233,19 +234,32 @@
     scrollToBottom();
     
     try {
-      const systemPrompt = `You are Karsa, an autonomous coding agent with file access.
+      // Get MCP system prompt
+      const mcpPrompt = await invoke('mcp_get_system_prompt');
+      
+      const systemPrompt = `You are Karsa, an AI coding assistant with direct access to the codebase through MCP (Model Context Protocol) tools.
 
-CAPABILITIES:
-- Read and analyze code from open files
-- Suggest precise edits with line numbers
-- Execute multi-step reasoning for complex tasks
-- Provide working implementations
+AVAILABLE TOOLS (use these to answer questions):
+1. get_project_map() - See the entire project structure (folders & files)
+2. query_codebase(query) - Search for specific files or code
+3. get_codebase_stats() - Get project statistics (languages, file count, lines)
+4. file_read(path) - Read file contents (max 1000 lines)
+5. file_read_range(path, start, end) - Read specific lines (max 500 lines)
+6. list_symbols(path) - List functions/classes in a file
+7. search(pattern, path) - Search for text patterns
 
-CONSTRAINTS:
-- Only reference code you can see in context
-- State assumptions explicitly
-- If file content is needed but missing, request it
-- Never invent function signatures or APIs
+WORKFLOW:
+1. When asked about project structure → use get_project_map()
+2. When asked about specific files → use query_codebase() or search()
+3. Before reading files → use get_file_info() to check size
+4. For large files → use list_symbols() first, then file_read_range()
+
+CORE RULES:
+- ALWAYS use tools to verify information about the codebase
+- Never guess about project structure - use get_project_map()
+- Cite actual file paths and line numbers
+- If uncertain, use tools to check
+- Be direct and concise
 
 RESPONSE STYLE:
 - Start with direct answer
@@ -258,10 +272,7 @@ ERROR HANDLING:
 - If approach has risks, warn before suggesting
 - If multiple solutions exist, present trade-offs briefly
 
-VERIFICATION:
-- Double-check logic before responding
-- Admit if solution is untested
-- Suggest testing steps when relevant
+${mcpPrompt}
 
 Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No file open'}`;
 
@@ -465,7 +476,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
        {/if}
 
        <!-- Render Messages -->
-       {#each messages as msg}
+       {#each visibleMessages as msg}
          <div class={cn("flex gap-4 max-w-4xl mx-auto group animate-in fade-in slide-in-from-bottom-4 duration-500", msg.role === 'user' ? "flex-row-reverse" : "")}>
            <div class={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-border shadow-md transition-transform group-hover:scale-105", 
              msg.role === 'user' ? "bg-gradient-to-br from-primary to-blue-600 text-primary-foreground" : "bg-card text-foreground")}>
@@ -534,17 +545,25 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
                rows="1"
              ></textarea>
              
-             <button 
-               onclick={sendMessage}
-               disabled={isLoading || !input.trim()}
-               class="p-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shrink-0 mb-0.5 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95"
-             >
-               {#if isLoading}
-                 <Loader2 size={20} class="animate-spin" />
-               {:else}
+             {#if isLoading}
+               <button 
+                 onclick={() => { isLoading = false; streamingContent = ''; }}
+                 class="p-3 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-all shrink-0 mb-0.5 shadow-lg hover:scale-105 active:scale-95"
+                 title="Stop generation"
+               >
+                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                   <rect x="6" y="6" width="12" height="12" rx="2" />
+                 </svg>
+               </button>
+             {:else}
+               <button 
+                 onclick={sendMessage}
+                 disabled={!input.trim()}
+                 class="p-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shrink-0 mb-0.5 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95"
+               >
                  <Send size={20} strokeWidth={2.5} />
-               {/if}
-             </button>
+               </button>
+             {/if}
           </div>
        </div>
     </div>

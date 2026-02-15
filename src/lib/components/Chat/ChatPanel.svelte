@@ -30,33 +30,41 @@
   let maxTokens = $state(2000);
   let selectedModel = $state(configStore.settings.ai.selectedModel || 'gemini-1.5-pro');
 
-  const SYSTEM_PROMPT = `You are Karsa, a precise coding assistant.
+  const SYSTEM_PROMPT = `You are Karsa, an AI coding assistant with direct access to the codebase through MCP (Model Context Protocol) tools.
+
+AVAILABLE TOOLS (use these to answer questions):
+1. get_project_map() - See the entire project structure (folders & files)
+2. query_codebase(query) - Search for specific files or code
+3. get_codebase_stats() - Get project statistics (languages, file count, lines)
+4. file_read(path) - Read file contents (max 1000 lines)
+5. file_read_range(path, start, end) - Read specific lines (max 500 lines)
+6. list_symbols(path) - List functions/classes in a file
+7. search(pattern, path) - Search for text patterns
+
+WORKFLOW:
+1. When asked about project structure → use get_project_map()
+2. When asked about specific files → use query_codebase() or search()
+3. Before reading files → use get_file_info() to check size
+4. For large files → use list_symbols() first, then file_read_range()
 
 CORE RULES:
+- ALWAYS use tools to verify information about the codebase
+- Never guess about project structure - use get_project_map()
+- Cite actual file paths and line numbers
+- If uncertain, use tools to check
 - Be direct and concise
-- If uncertain, say "I don't know" - never guess
-- Cite line numbers when referencing code
-- Admit mistakes immediately if corrected
-- Ask for clarification when context is unclear
 
 CODE RESPONSES:
 - Provide minimal, working code
-- Include only necessary comments
-- Show actual implementation, not placeholders
-- Test logic before suggesting
+- Show actual implementation from the codebase
+- Reference real files and functions
 
 AVOID:
-- Hallucinating APIs or functions that don't exist
-- Overconfident answers without verification
-- Verbose explanations when code suffices
-- Apologizing excessively
+- Saying "I can't see" when tools are available
+- Hallucinating code that doesn't exist
+- Guessing about project structure
 
-WHEN UNSURE:
-- State what you know vs. what you're inferring
-- Suggest verification steps
-- Offer alternatives with trade-offs
-
-Focus on accuracy over speed. Quality over quantity.`;
+Focus on accuracy using available tools.`;
 
   onMount(async () => {
     await loadConversations();
@@ -227,13 +235,16 @@ Focus on accuracy over speed. Quality over quantity.`;
         custom_models: []
       };
       
+      // Get MCP system prompt
+      const mcpPrompt = await invoke('mcp_get_system_prompt');
+      
       let contextContent = '';
       if (fsStore.activeFile) {
         contextContent = `\n\nCurrent file: ${fsStore.activeFile.name}\n\`\`\`\n${fsStore.activeFileContent}\n\`\`\``;
       }
 
       const msgs = [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: SYSTEM_PROMPT + '\n\n' + mcpPrompt },
         ...messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: `${userMessage}${contextContent}` }
       ];
@@ -490,17 +501,25 @@ Focus on accuracy over speed. Quality over quantity.`;
         rows="1"
       ></textarea>
       
-      <button 
-        onclick={sendMessage}
-        disabled={isLoading || !input.trim()}
-        class="p-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0 mb-0.5"
-      >
-        {#if isLoading}
-          <Loader2 size={14} class="animate-spin" />
-        {:else}
+      {#if isLoading}
+        <button 
+          onclick={() => { isLoading = false; }}
+          class="p-1.5 bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors shrink-0 mb-0.5"
+          title="Stop generation"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2" />
+          </svg>
+        </button>
+      {:else}
+        <button 
+          onclick={sendMessage}
+          disabled={!input.trim()}
+          class="p-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0 mb-0.5"
+        >
           <Send size={14} />
-        {/if}
-      </button>
+        </button>
+      {/if}
     </div>
     <div class="flex items-center justify-between mt-2 px-1">
        {#if fsStore.activeFile}
