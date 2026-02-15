@@ -24,20 +24,23 @@ impl Terminal {
         let mut cmd = CommandBuilder::new(&shell_cmd);
         cmd.cwd(std::env::current_dir().unwrap_or_default());
         
+        // Suppress Powerlevel10k instant prompt warning
+        cmd.env("POWERLEVEL9K_INSTANT_PROMPT", "quiet");
+        
         let child = pair.slave.spawn_command(cmd)?;
         
         let reader = pair.master.try_clone_reader()?;
         let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
         let writer_clone = writer.clone();
 
-        // Spawn reader thread
+        // Spawn reader thread with buffering
         std::thread::spawn(move || {
-            let mut reader = BufReader::new(reader);
-            let mut buffer = Vec::new();
+            let mut reader = BufReader::with_capacity(8192, reader);
+            let mut buffer = Vec::with_capacity(4096);
             loop {
                 buffer.clear();
                 match reader.read_until(b'\n', &mut buffer) {
-                    Ok(0) => break, // EOF
+                    Ok(0) => break,
                     Ok(_) => {
                         let _ = app.emit("terminal-output", buffer.clone());
                     }
