@@ -6,7 +6,7 @@
   import { fsStore } from '../stores/fileSystem.svelte.js';
   import { Send, Bot, User, Sparkles, Loader2, Plus, Settings, Search, MessageSquare, Trash2, ChevronDown } from 'lucide-svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
-  import ModelSelector from '../ModelSelector.svelte';
+  import ModelSelector from './ModelSelector.svelte';
   import ThinkingBlock from './Chat/ThinkingBlock.svelte';
   import ToolExecution from './Chat/ToolExecution.svelte';
   import { cn } from '../utils.js';
@@ -210,7 +210,16 @@ Active File: ${fsStore.activeFile?.name || 'None'}
         ...messages.slice(-2).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
       ];
-      await invoke('send_agent_message_stream', { messages: msgs, config: configStore.settings.ai });
+      
+      const config = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: []
+      };
+      
+      await invoke('send_agent_message_stream', { messages: msgs, config: config });
     } catch (e) {
       messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp }];
       isLoading = false;
