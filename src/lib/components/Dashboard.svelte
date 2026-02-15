@@ -31,26 +31,26 @@
   }
 </script>
 
-<div class="h-full w-full flex items-center justify-center bg-background text-foreground overflow-hidden relative">
+<div class="h-full w-full flex items-center justify-center bg-background text-foreground overflow-y-auto overflow-x-hidden relative p-4">
   <!-- Subtle Background Pattern -->
-  <div class="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
-  <div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none"></div>
+  <div class="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none fixed"></div>
+  <div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none fixed"></div>
 
-  <div class="max-w-4xl w-full h-[80vh] grid grid-cols-[1.2fr_1fr] gap-12 z-10 p-8">
+  <div class="max-w-5xl w-full grid grid-cols-1 md:grid-cols-[1.2fr_1fr] gap-8 md:gap-12 z-10 min-h-[400px]">
     
     <!-- Left Column: Branding & Actions -->
-    <div class="flex flex-col h-full">
-      <div class="mb-10">
+    <div class="flex flex-col justify-center">
+      <div class="mb-8">
         <div class="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center text-primary mb-4 border border-primary/20 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
            <Zap size={24} fill="currentColor" />
         </div>
         <h1 class="text-3xl font-bold tracking-tight text-foreground">Karsa <span class="text-primary">IDE</span></h1>
-        <p class="text-muted-foreground mt-2 text-sm max-w-sm">
+        <p class="text-muted-foreground mt-2 text-sm max-w-sm leading-relaxed">
           A high-performance, AI-native editor designed for flow state.
         </p>
       </div>
 
-      <div class="space-y-6 flex-1">
+      <div class="space-y-6">
         <div>
           <h2 class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-3">Start</h2>
           <div class="space-y-1">
@@ -71,7 +71,7 @@
           </div>
         </div>
 
-        <div>
+        <div class="hidden sm:block">
           <h2 class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-3">Resources</h2>
           <div class="grid grid-cols-2 gap-2">
              <button class="flex items-center gap-2 p-2 text-xs text-muted-foreground hover:text-primary hover:bg-primary/5 rounded transition-colors">
@@ -86,7 +86,7 @@
     </div>
 
     <!-- Right Column: Recent Projects (Scrollable internally) -->
-    <div class="flex flex-col h-full bg-card/30 border border-border/50 rounded-xl backdrop-blur-sm overflow-hidden">
+    <div class="flex flex-col bg-card/30 border border-border/50 rounded-xl backdrop-blur-sm overflow-hidden h-[400px] md:h-[500px] shadow-sm">
       <div class="p-4 border-b border-border/50 flex items-center justify-between shrink-0 bg-muted/10">
          <h2 class="text-xs font-semibold text-foreground flex items-center gap-2">
             <Clock size={14} class="text-primary" />

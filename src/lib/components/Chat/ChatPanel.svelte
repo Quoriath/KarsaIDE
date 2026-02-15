@@ -54,10 +54,11 @@
 
     try {
       const config = {
-        ...configStore.settings.ai,
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
         model_name: selectedModel,
-        temperature,
-        max_tokens: maxTokens
+        custom_models: []
       };
       
       let contextContent = '';

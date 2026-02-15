@@ -26,51 +26,82 @@ class ConfigStore {
     }
   });
 
+  isLoaded = $state(false);
+
   constructor() {
     this.load();
   }
 
   async load() {
     try {
-      // Try to load from disk via Tauri (mocked here if backend missing)
-      // In a real app, we'd use tauri-plugin-store or read a config file
-      const stored = localStorage.getItem('karsa_config');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        this.settings = { ...this.settings, ...parsed };
+      // Load from backend (secure storage)
+      const backendConfig = await invoke('get_ai_config');
+      
+      // Merge with defaults
+      this.settings = {
+        ...this.settings,
+        ai: {
+          ...this.settings.ai,
+          provider: backendConfig.ai?.provider || this.settings.ai.provider,
+          apiKey: backendConfig.ai?.api_key || this.settings.ai.apiKey,
+          baseUrl: backendConfig.ai?.base_url || this.settings.ai.baseUrl,
+          selectedModel: backendConfig.ai?.model_name || this.settings.ai.selectedModel,
+          models: backendConfig.ai?.custom_models || this.settings.ai.models
+        },
+        editor: backendConfig.editor || this.settings.editor
+      };
+
+      // Load layout from localStorage (UI state)
+      const layoutStored = localStorage.getItem('karsa_layout');
+      if (layoutStored) {
+        this.settings.layout = { ...this.settings.layout, ...JSON.parse(layoutStored) };
       }
+
+      this.isLoaded = true;
     } catch (e) {
-      console.error('Failed to load config', e);
+      console.error('Failed to load config:', e);
+      this.isLoaded = true;
     }
   }
 
-  save() {
+  async save() {
     try {
-      localStorage.setItem('karsa_config', JSON.stringify(this.settings));
-      // In real app: await invoke('save_config', { config: this.settings });
+      // Save to backend
+      await invoke('save_ai_config', {
+        config: {
+          ai: {
+            provider: this.settings.ai.provider,
+            api_key: this.settings.ai.apiKey,
+            base_url: this.settings.ai.baseUrl,
+            model_name: this.settings.ai.selectedModel,
+            custom_models: this.settings.ai.models
+          },
+          editor: this.settings.editor,
+          terminal: {},
+          session: {}
+        }
+      });
+
+      // Save layout to localStorage
+      localStorage.setItem('karsa_layout', JSON.stringify(this.settings.layout));
     } catch (e) {
-      console.error('Failed to save config', e);
+      console.error('Failed to save config:', e);
     }
   }
 
   updateAiConfig(config) {
     this.settings.ai = { ...this.settings.ai, ...config };
     this.save();
-    
-    // Sync specifically with backend AI service as requested
-    invoke('save_ai_config', { config: this.settings.ai }).catch(err => {
-        console.error('Failed to sync AI config to backend:', err);
-    });
   }
 
   updateLayout(layout) {
     this.settings.layout = { ...this.settings.layout, ...layout };
-    this.save();
+    localStorage.setItem('karsa_layout', JSON.stringify(this.settings.layout));
   }
 
   setTheme(themeName) {
     this.settings.theme = themeName;
-    this.save();
+    localStorage.setItem('karsa_theme', themeName);
   }
 }
 

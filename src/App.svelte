@@ -20,7 +20,8 @@
   import AgentView from './lib/components/AgentView.svelte';
   import ResizablePanel from './lib/components/ResizablePanel.svelte';
   import Terminal from './lib/components/Terminal.svelte';
-  import SettingsModal from './lib/components/Settings/SettingsModal.svelte';
+  import Settings from './lib/components/Settings.svelte';
+  import TitleBar from './lib/components/TitleBar.svelte';
   
   let showOnboarding = $state(true);
   let showChat = $state(configStore.settings.layout.chatVisible);
@@ -69,8 +70,11 @@
   {#if showOnboarding}
     <Onboarding onComplete={() => showOnboarding = false} />
   {:else}
+    <!-- Custom Window Title Bar -->
+    <TitleBar />
+
     <!-- 1. HEADER (Fixed Height, Shrink 0) -->
-    <div class="shrink-0 z-50">
+    <div class="shrink-0 z-50 pt-8">
       <MenuBar onOpenSettings={() => showSettings = true} />
     </div>
 
@@ -185,6 +189,6 @@
   {/if}
 
   {#if showSettings}
-    <SettingsModal onClose={() => showSettings = false} />
+    <Settings onClose={() => showSettings = false} />
   {/if}
 </main>

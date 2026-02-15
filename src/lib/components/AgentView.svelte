@@ -186,19 +186,23 @@
     scrollToBottom();
     
     try {
-      let context = null;
-      if (fsStore.activeFile) {
-        context = {
-          file: fsStore.activeFile.name,
-          content: fsStore.activeFileContent
-        };
-      }
+      const msgs = [
+        { role: 'system', content: 'You are a helpful AI coding assistant.' },
+        ...messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMessage }
+      ];
 
-      await invoke('stream_chat_completion', {
-        message: userMessage,
-        model: selectedModel,
-        context: context,
-        config: configStore.settings.ai
+      const config = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: []
+      };
+
+      await invoke('send_chat_completion_stream', {
+        messages: msgs,
+        config: config
       });
     } catch (e) {
       console.error('Failed to start stream:', e);
