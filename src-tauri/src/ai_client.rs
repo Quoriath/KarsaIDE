@@ -36,6 +36,7 @@ struct Message {
 #[derive(Debug, Deserialize)]
 struct Delta {
     content: Option<String>,
+    reasoning: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -280,8 +281,16 @@ impl AIClient {
                     if let Ok(chunk_data) = serde_json::from_str::<ChatResponse>(data) {
                         if let Some(choice) = chunk_data.choices.first() {
                             if let Some(delta) = &choice.delta {
+                                if let Some(reasoning) = &delta.reasoning {
+                                    if !reasoning.is_empty() {
+                                        let _ = app.emit("ai-stream-reasoning", reasoning.clone());
+                                    }
+                                }
                                 if let Some(content) = &delta.content {
-                                    let _ = app.emit("ai-stream-chunk", content.clone());
+                                    if !content.is_empty() {
+                                        let _ = app.emit("ai-stream-chunk", content.clone());
+                                    }
+                                }
                                 }
                             }
                         }

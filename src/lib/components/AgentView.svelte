@@ -20,6 +20,8 @@
   let input = $state('');
   let isLoading = $state(false);
   let streamingContent = $state(''); 
+  let streamingReasoning = $state('');
+  let showReasoning = $state(false);
   
   let messagesContainer;
   let unlistenHandlers = [];
@@ -46,6 +48,11 @@
       scrollToBottom();
     });
 
+    const unlistenReasoning = await listen('ai-stream-reasoning', (event) => {
+      const reasoning = typeof event.payload === 'string' ? event.payload : '';
+      streamingReasoning += reasoning;
+    });
+
     const unlistenDone = await listen('ai-stream-done', async () => {
       // Guard: only save if content exists and not already saved
       if (streamingContent.trim() && isLoading) {
@@ -54,6 +61,7 @@
         messages = [...messages, { role: 'assistant', content: streamingContent, timestamp }];
       }
       streamingContent = '';
+      streamingReasoning = '';
       isLoading = false;
       scrollToBottom();
     });
@@ -68,7 +76,7 @@
       }
     });
 
-    unlistenHandlers.push(unlistenChunk, unlistenDone, unlistenUpdate);
+    unlistenHandlers.push(unlistenChunk, unlistenReasoning, unlistenDone, unlistenUpdate);
   });
 
   onDestroy(() => {
@@ -511,6 +519,19 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
                 <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">
                    Karsa <span class="text-[10px] opacity-50">• Typing...</span>
                 </div>
+                
+                <!-- Thinking/Reasoning -->
+                {#if streamingReasoning}
+                  <details class="mb-2 w-full">
+                    <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-2 py-1 px-2 rounded bg-muted/30">
+                      <span class="text-[10px]">💭</span> Thinking...
+                    </summary>
+                    <div class="mt-2 text-xs text-muted-foreground bg-muted/20 rounded p-3 border border-border/50">
+                      {streamingReasoning}
+                    </div>
+                  </details>
+                {/if}
+                
                 <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm min-w-[60px]">
                    {#if streamingContent}
                       <MarkdownRenderer content={streamingContent} />
