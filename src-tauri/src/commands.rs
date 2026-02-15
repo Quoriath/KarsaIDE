@@ -26,8 +26,24 @@ impl TerminalState {
 
 impl AppState {
     pub fn new() -> Self {
-        let db = Database::new().expect("Failed to initialize database");
-        let mcp = MCPCore::new();
+        log::info!("Initializing AppState...");
+        
+        // Parallel initialization
+        let db_handle = std::thread::spawn(|| {
+            log::info!("Loading database...");
+            Database::new().expect("Failed to initialize database")
+        });
+        
+        let mcp_handle = std::thread::spawn(|| {
+            log::info!("Loading MCP core...");
+            MCPCore::new()
+        });
+        
+        let db = db_handle.join().expect("Database init failed");
+        let mcp = mcp_handle.join().expect("MCP init failed");
+        
+        log::info!("AppState initialized");
+        
         Self {
             db: Arc::new(Mutex::new(db)),
             mcp: Arc::new(Mutex::new(mcp)),

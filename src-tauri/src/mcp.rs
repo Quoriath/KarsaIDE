@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use std::collections::HashMap;
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCPRequest {
@@ -32,6 +34,7 @@ pub struct ToolParameter {
 
 pub struct MCPCore {
     tools: HashMap<String, Box<dyn MCPTool + Send + Sync>>,
+    initialized: bool,
 }
 
 pub trait MCPTool {
@@ -43,14 +46,21 @@ pub trait MCPTool {
 
 impl MCPCore {
     pub fn new() -> Self {
+        log::info!("Initializing MCP Core...");
         let mut core = Self {
             tools: HashMap::new(),
+            initialized: false,
         };
         
-        // Register built-in tools
+        // Register built-in tools (fast, no I/O)
         core.register_tool(Box::new(FileReadTool));
+        core.register_tool(Box::new(FileReadRangeTool));
+        core.register_tool(Box::new(ListSymbolsTool));
         core.register_tool(Box::new(FileWriteTool));
         core.register_tool(Box::new(SearchTool));
+        
+        core.initialized = true;
+        log::info!("MCP Core initialized with {} tools", core.tools.len());
         
         core
     }
@@ -96,27 +106,42 @@ impl MCPCore {
         let tools_json = serde_json::to_string_pretty(&self.get_tool_definitions()).unwrap();
         
         format!(
-            r#"You are Karsa MCP Agent. You MUST respond with structured JSON commands only.
+            r#"You are Karsa MCP Agent. STRICT JSON-ONLY responses.
 
 AVAILABLE TOOLS:
 {}
 
-RESPONSE FORMAT:
+MANDATORY PROTOCOL - Search-Map-Read:
+1. SEARCH FIRST: Use 'search' to find relevant files
+2. MAP STRUCTURE: Use 'list_symbols' to see functions/classes (NO content read)
+3. READ PRECISELY: Use 'file_read_range' for specific lines only
+
+CONTEXT ECONOMY RULES:
+- file_read: MAX 300 lines (will REJECT larger files)
+- file_read_range: MAX 300 lines per call
+- ALWAYS check file size with list_symbols first
+- NEVER read entire large files
+- Chain multiple range reads if needed
+
+RESPONSE FORMAT (STRICT):
 {{
-  "thought": "brief reasoning",
+  "thought": "brief reasoning (max 20 words)",
   "tool": "tool_name",
   "params": {{}},
   "next": "continue|done"
 }}
 
-RULES:
-- Always use tools for file operations
-- Never output conversational text
-- Chain multiple tool calls if needed
-- Set next="done" when task complete
+WORKFLOW EXAMPLE:
+1. {{"thought": "Find auth files", "tool": "search", "params": {{"pattern": "authenticate"}}, "next": "continue"}}
+2. {{"thought": "Map auth.rs structure", "tool": "list_symbols", "params": {{"path": "src/auth.rs"}}, "next": "continue"}}
+3. {{"thought": "Read login function", "tool": "file_read_range", "params": {{"path": "src/auth.rs", "start_line": 45, "end_line": 80}}, "next": "continue"}}
+4. {{"thought": "Task complete", "tool": "none", "params": {{}}, "next": "done"}}
 
-Example:
-{{"thought": "Read file first", "tool": "file_read", "params": {{"path": "src/main.rs"}}, "next": "continue"}}"#,
+VIOLATIONS = REJECTION:
+- Reading files without mapping first
+- Requesting >300 lines
+- Conversational text in response
+- Missing thought/tool/params/next fields"#,
             tools_json
         )
     }
@@ -126,7 +151,7 @@ Example:
 struct FileReadTool;
 impl MCPTool for FileReadTool {
     fn name(&self) -> &str { "file_read" }
-    fn description(&self) -> &str { "Read file contents" }
+    fn description(&self) -> &str { "Read file contents (max 300 lines, use file_read_range for larger files)" }
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![ToolParameter {
             name: "path".to_string(),
@@ -138,7 +163,113 @@ impl MCPTool for FileReadTool {
     fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
         let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
         let content = std::fs::read_to_string(path)?;
-        Ok(serde_json::json!({ "content": content }))
+        let lines: Vec<&str> = content.lines().collect();
+        
+        // Context Economy: Reject large files
+        if lines.len() > 300 {
+            return Err(anyhow::anyhow!(
+                "File too large ({} lines). Use file_read_range(path, start, end) instead. Max 300 lines per read.",
+                lines.len()
+            ));
+        }
+        
+        Ok(serde_json::json!({ 
+            "content": content,
+            "lines": lines.len()
+        }))
+    }
+}
+
+struct FileReadRangeTool;
+impl MCPTool for FileReadRangeTool {
+    fn name(&self) -> &str { "file_read_range" }
+    fn description(&self) -> &str { "Read specific line range from file" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "path".to_string(),
+                param_type: "string".to_string(),
+                description: "File path".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "start_line".to_string(),
+                param_type: "number".to_string(),
+                description: "Start line (1-indexed)".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "end_line".to_string(),
+                param_type: "number".to_string(),
+                description: "End line (inclusive)".to_string(),
+                required: true,
+            },
+        ]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
+        let start = params["start_line"].as_u64().ok_or(anyhow::anyhow!("Missing start_line"))? as usize;
+        let end = params["end_line"].as_u64().ok_or(anyhow::anyhow!("Missing end_line"))? as usize;
+        
+        if end - start > 300 {
+            return Err(anyhow::anyhow!("Range too large. Max 300 lines per read."));
+        }
+        
+        let content = std::fs::read_to_string(path)?;
+        let lines: Vec<&str> = content.lines().collect();
+        
+        if start < 1 || start > lines.len() || end > lines.len() {
+            return Err(anyhow::anyhow!("Invalid line range"));
+        }
+        
+        let range_content = lines[(start-1)..end].join("\n");
+        
+        Ok(serde_json::json!({ 
+            "content": range_content,
+            "start": start,
+            "end": end,
+            "total_lines": lines.len()
+        }))
+    }
+}
+
+struct ListSymbolsTool;
+impl MCPTool for ListSymbolsTool {
+    fn name(&self) -> &str { "list_symbols" }
+    fn description(&self) -> &str { "List functions/classes in file without reading content" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![ToolParameter {
+            name: "path".to_string(),
+            param_type: "string".to_string(),
+            description: "File path".to_string(),
+            required: true,
+        }]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
+        let content = std::fs::read_to_string(path)?;
+        
+        // Simple symbol extraction (functions, classes)
+        let mut symbols = Vec::new();
+        for (i, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("fn ") || 
+               trimmed.starts_with("pub fn ") ||
+               trimmed.starts_with("async fn ") ||
+               trimmed.starts_with("class ") ||
+               trimmed.starts_with("function ") ||
+               trimmed.starts_with("def ") {
+                symbols.push(serde_json::json!({
+                    "line": i + 1,
+                    "symbol": trimmed.split('(').next().unwrap_or(trimmed)
+                }));
+            }
+        }
+        
+        Ok(serde_json::json!({ 
+            "symbols": symbols,
+            "file": path
+        }))
     }
 }
 
