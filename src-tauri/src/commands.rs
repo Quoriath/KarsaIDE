@@ -2,6 +2,7 @@ use crate::ai_client::{AIClient, ModelInfo};
 use crate::config_manager::{AIConfig, KarsaConfig, SessionData, load_config, save_config, update_session};
 use crate::terminal::{Terminal, ShellInfo};
 use crate::database::{Database, Conversation, Message};
+use crate::mcp::{MCPCore, MCPRequest, MCPResponse};
 use tauri::{command, AppHandle, State, Emitter};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -12,6 +13,7 @@ pub struct TerminalState {
 
 pub struct AppState {
     db: Arc<Mutex<Database>>,
+    mcp: Arc<Mutex<MCPCore>>,
 }
 
 impl TerminalState {
@@ -25,8 +27,10 @@ impl TerminalState {
 impl AppState {
     pub fn new() -> Self {
         let db = Database::new().expect("Failed to initialize database");
+        let mcp = MCPCore::new();
         Self {
             db: Arc::new(Mutex::new(db)),
+            mcp: Arc::new(Mutex::new(mcp)),
         }
     }
 }
@@ -226,6 +230,28 @@ pub fn toggle_terminal(app: AppHandle, visible: bool) -> Result<(), String> {
 pub fn toggle_chat(app: AppHandle, visible: bool) -> Result<(), String> {
     app.emit("chat-state-changed", visible)
         .map_err(|e| e.to_string())
+}
+
+// MCP Commands
+#[command]
+pub fn mcp_execute(
+    request: MCPRequest,
+    state: State<'_, AppState>,
+) -> MCPResponse {
+    let mcp = state.mcp.lock().unwrap();
+    mcp.execute(request)
+}
+
+#[command]
+pub fn mcp_get_tools(state: State<'_, AppState>) -> Vec<crate::mcp::ToolDefinition> {
+    let mcp = state.mcp.lock().unwrap();
+    mcp.get_tool_definitions()
+}
+
+#[command]
+pub fn mcp_get_system_prompt(state: State<'_, AppState>) -> String {
+    let mcp = state.mcp.lock().unwrap();
+    mcp.generate_system_prompt()
 }
 
 // Terminal commands

@@ -4,6 +4,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { configStore } from '../stores/config.svelte.js';
   import { fsStore } from '../stores/fileSystem.svelte.js';
+  import { mcpClient } from '../mcp.js';
   import { Send, Bot, User, Sparkles, Loader2, Maximize2, Minimize2, Settings, Plus, X, Cpu, Globe, Key, History, Trash2, Download, Search, MessageSquare } from 'lucide-svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
   import ModelSelector from './ModelSelector.svelte';

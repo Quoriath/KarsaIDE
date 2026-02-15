@@ -5,6 +5,7 @@ mod commands;
 mod terminal;
 mod database;
 mod cache;
+mod mcp;
 
 use file_system::*;
 use commands::*;
@@ -52,6 +53,9 @@ pub fn run() {
             get_shell_info,
             spawn_terminal,
             write_to_terminal,
+            mcp_execute,
+            mcp_get_tools,
+            mcp_get_system_prompt,
         ])
         .setup(|_app| {
             log::info!("Karsa IDE setup complete");
