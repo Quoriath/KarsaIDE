@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   
   // Stores
   import { fsStore } from './lib/stores/fileSystem.svelte.js';
@@ -57,7 +58,13 @@
     <MenuBar onOpenSettings={() => showSettings = true} />
 
     <div class="flex-1 flex overflow-hidden relative min-h-0">
-      <ActivityBar bind:activeView bind:activeMode onChatToggle={toggleChat} onOpenSettings={() => showSettings = true} />
+      <ActivityBar 
+        bind:activeView 
+        bind:activeMode 
+        onChatToggle={toggleChat} 
+        onOpenSettings={() => showSettings = true} 
+        onTerminalToggle={toggleTerminal}
+      />
       
       {#if activeMode === 'editor'}
         <div class="flex-1 flex overflow-hidden animate-in fade-in duration-200">

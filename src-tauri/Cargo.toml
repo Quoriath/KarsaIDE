@@ -27,6 +27,8 @@ dirs = "5"
 portable-pty = "0.8"
 anyhow = "1"
 thiserror = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = "0.4"
 
 [profile.release]
 panic = "abort"

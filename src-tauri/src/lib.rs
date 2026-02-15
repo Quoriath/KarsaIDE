@@ -3,6 +3,8 @@ mod config_manager;
 mod ai_client;
 mod commands;
 mod terminal;
+mod database;
+mod cache;
 
 use file_system::*;
 use commands::*;
@@ -17,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(TerminalState::new())
+        .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             read_file_content,
             write_file_content,
@@ -35,6 +38,13 @@ pub fn run() {
             send_chat_completion_stream,
             get_session,
             save_session,
+            create_conversation,
+            get_conversations,
+            add_message,
+            get_messages,
+            delete_conversation,
+            toggle_terminal,
+            toggle_chat,
             spawn_terminal,
             write_to_terminal,
         ])

@@ -80,9 +80,33 @@ impl AIClient {
         }
     }
 
-    pub async fn fetch_kilo_models(&self, api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
-        let mut req = self.client
-            .get("https://api.kilo.ai/api/gateway/models");
+    pub async fn fetch_kilo_models(&self, api_key: Option<String>, force_refresh: bool) -> Result<Vec<ModelInfo>, String> {
+        // Try cache first if not forcing refresh
+        if !force_refresh {
+            if let Some(cached) = crate::cache::Cache::get_models() {
+                // Return cached immediately, spawn background refresh
+                let api_key_clone = api_key.clone();
+                let client = self.client.clone();
+                tokio::spawn(async move {
+                    if let Ok(fresh_models) = Self::fetch_models_from_api(&client, api_key_clone).await {
+                        let _ = crate::cache::Cache::set_models(fresh_models);
+                    }
+                });
+                return Ok(cached);
+            }
+        }
+        
+        // No cache or force refresh - fetch from API
+        let models = Self::fetch_models_from_api(&self.client, api_key).await?;
+        
+        // Cache the result
+        let _ = crate::cache::Cache::set_models(models.clone());
+        
+        Ok(models)
+    }
+    
+    async fn fetch_models_from_api(client: &Client, api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+        let mut req = client.get("https://api.kilo.ai/api/gateway/models");
 
         if let Some(key) = api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
@@ -97,15 +121,12 @@ impl AIClient {
             return Err(format!("API error: {}", response.status()));
         }
 
-        // Try to parse as KiloModelsResponse
         let text = response.text().await
             .map_err(|e| format!("Failed to read response: {}", e))?;
 
-        // Try parsing as object with data or models field
         let kilo_response: KiloModelsResponse = serde_json::from_str(&text)
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        // Use data field if available, otherwise models field
         let models_list = if !kilo_response.data.is_empty() {
             kilo_response.data
         } else {

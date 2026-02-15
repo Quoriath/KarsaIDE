@@ -10,8 +10,10 @@
   import { cn } from '../utils.js';
 
   // --- STATE MANAGEMENT ---
-  let sessions = $state([]);
-  let activeSessionId = $state(null);
+  let conversations = $state([]); // Loaded from SQLite
+  let activeConversationId = $state(null);
+  let messages = $state([]); // Active conversation messages
+  
   let searchQuery = $state('');
   let input = $state('');
   let isLoading = $state(false);
@@ -20,32 +22,19 @@
   let messagesContainer;
   let unlistenHandlers = [];
 
-  // Derived State
-  let activeSession = $derived(sessions.find(s => s.id === activeSessionId));
-  let currentMessages = $derived(activeSession ? activeSession.messages : []);
-  
   // Persistent Config
   let selectedModel = $state(configStore.settings.ai.selectedModel || 'gemini-1.5-pro');
 
   // --- LIFECYCLE & PERSISTENCE ---
 
   onMount(async () => {
-    // 1. Load History
-    const savedHistory = localStorage.getItem('karsa-chat-history');
-    if (savedHistory) {
-      try {
-        sessions = JSON.parse(savedHistory);
-      } catch (e) {
-        console.error('Failed to load chat history', e);
-      }
-    }
+    // 1. Load Conversations from DB
+    await loadConversations();
 
-    // Ensure at least one session exists
-    if (sessions.length === 0) {
-      createNewSession();
+    if (conversations.length === 0) {
+      await createNewConversation();
     } else {
-      // Select most recent
-      activeSessionId = sessions[0].id;
+      await loadMessages(conversations[0].id);
     }
 
     // 2. Setup Stream Listeners
@@ -55,13 +44,13 @@
       scrollToBottom();
     });
 
-    const unlistenDone = await listen('ai-stream-done', () => {
+    const unlistenDone = await listen('ai-stream-done', async () => {
       if (streamingContent.trim()) {
-        addMessageToActiveSession({ 
-          role: 'assistant', 
-          content: streamingContent, 
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-        });
+        await saveMessage('assistant', streamingContent);
+        // Reload to get properly ID-ed message from DB or just push to local state for speed
+        // For speed, we push local state:
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        messages = [...messages, { role: 'assistant', content: streamingContent, timestamp }];
       }
       streamingContent = '';
       isLoading = false;
@@ -75,104 +64,91 @@
     unlistenHandlers.forEach(fn => fn());
   });
 
-  // 3. Save History on Change (Auto-save)
-  $effect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem('karsa-chat-history', JSON.stringify(sessions));
+  // --- DATABASE ACTIONS ---
+
+  async function loadConversations() {
+    try {
+      // Backend: get_conversations(mode: 'agent')
+      conversations = await invoke('get_conversations', { mode: 'agent', limit: 50 });
+    } catch (e) {
+      console.error('Failed to load conversations:', e);
     }
-  });
-
-  // --- ACTIONS ---
-
-  function createNewSession() {
-    const newSession = {
-      id: crypto.randomUUID(),
-      title: 'New Chat',
-      date: new Date().toISOString(),
-      messages: []
-    };
-    sessions = [newSession, ...sessions];
-    activeSessionId = newSession.id;
-    input = '';
-    streamingContent = '';
   }
 
-  function deleteSession(e, id) {
+  async function createNewConversation() {
+    try {
+      const id = await invoke('create_conversation', {
+        mode: 'agent',
+        title: 'New Chat',
+        contextPath: fsStore.activeFile?.path || null,
+        model: selectedModel
+      });
+      activeConversationId = id;
+      messages = [];
+      await loadConversations(); // Refresh list
+    } catch (e) {
+      console.error('Failed to create conversation:', e);
+    }
+  }
+
+  async function loadMessages(id) {
+    activeConversationId = id;
+    try {
+      const msgs = await invoke('get_messages', { conversationId: id });
+      // Map DB fields to UI fields if necessary
+      messages = msgs.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }));
+      input = '';
+      streamingContent = '';
+      scrollToBottom();
+    } catch (e) {
+      console.error('Failed to load messages:', e);
+    }
+  }
+
+  async function saveMessage(role, content) {
+    if (!activeConversationId) return;
+    try {
+      await invoke('add_message', {
+        conversationId: activeConversationId,
+        role,
+        content
+      });
+    } catch (e) {
+      console.error('Failed to save message:', e);
+    }
+  }
+
+  async function deleteConversation(e, id) {
     e.stopPropagation();
-    sessions = sessions.filter(s => s.id !== id);
-    if (activeSessionId === id) {
-      activeSessionId = sessions[0]?.id || null;
-      if (!activeSessionId) createNewSession();
-    }
-  }
-
-  function clearCurrentHistory() {
-    if (confirm('Are you sure you want to clear this conversation?')) {
-      updateActiveSessionMessages([]);
-    }
-  }
-
-  function exportChat() {
-    if (!activeSession) return;
-    const data = JSON.stringify(activeSession, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `karsa-chat-${activeSession.id.slice(0,8)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  // --- LOGIC HELPERS ---
-
-  function addMessageToActiveSession(msg) {
-    if (!activeSessionId) return;
-    
-    // Find index of active session to mutate it (Svelte 5 requirement for reactivity on array items)
-    const index = sessions.findIndex(s => s.id === activeSessionId);
-    if (index !== -1) {
-      const updatedMessages = [...sessions[index].messages, msg];
-      
-      // Limit to 100 messages for performance
-      if (updatedMessages.length > 100) {
-        updatedMessages.shift();
+    if (!confirm('Delete this conversation?')) return;
+    try {
+      await invoke('delete_conversation', { id });
+      conversations = conversations.filter(c => c.id !== id);
+      if (activeConversationId === id) {
+        if (conversations.length > 0) {
+          loadMessages(conversations[0].id);
+        } else {
+          createNewConversation();
+        }
       }
-
-      // Update session with new message and title if needed
-      const updatedSession = { ...sessions[index], messages: updatedMessages };
-      
-      // Auto-title: if it's the first user message
-      if (updatedMessages.length === 1 && msg.role === 'user') {
-        updatedSession.title = msg.content.slice(0, 30) + (msg.content.length > 30 ? '...' : '');
-      }
-      
-      // Reassign to trigger reactivity
-      const newSessions = [...sessions];
-      newSessions[index] = updatedSession;
-      sessions = newSessions;
+    } catch (e) {
+      console.error('Failed to delete conversation:', e);
     }
   }
 
-  function updateActiveSessionMessages(newMessages) {
-    const index = sessions.findIndex(s => s.id === activeSessionId);
-    if (index !== -1) {
-      const newSessions = [...sessions];
-      newSessions[index] = { ...newSessions[index], messages: newMessages };
-      sessions = newSessions;
-    }
-  }
+  // --- UI HELPERS ---
 
-  function getGroupedSessions() {
+  function getGroupedConversations() {
     if (!searchQuery) {
-      // Group by date logic
       const groups = { 'Today': [], 'Yesterday': [], 'Previous 7 Days': [], 'Older': [] };
       const now = new Date();
       
-      sessions.forEach(session => {
-        const d = new Date(session.date);
+      conversations.forEach(session => {
+        const d = new Date(session.updated_at || session.created_at); // Use DB timestamp
         const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
         
         if (diffDays === 0) groups['Today'].push(session);
@@ -183,27 +159,17 @@
       
       return Object.entries(groups).filter(([_, items]) => items.length > 0);
     } else {
-      // Filter by search
-      const filtered = sessions.filter(s => 
-        s.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        s.messages.some(m => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+      const filtered = conversations.filter(s => 
+        s.title.toLowerCase().includes(searchQuery.toLowerCase())
       );
       return [['Search Results', filtered]];
     }
   }
 
-  // --- CORE CHAT LOGIC ---
-
-  function selectModel(model) {
-    selectedModel = model;
-    configStore.updateAiConfig({ selectedModel: model });
-    showModelSelector = false;
-  }
-
   async function sendMessage() {
     if (!input.trim() || isLoading) return;
     
-    if (!activeSessionId) createNewSession();
+    if (!activeConversationId) await createNewConversation();
 
     const userMessage = input.trim();
     input = '';
@@ -211,7 +177,10 @@
     streamingContent = ''; 
     
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    addMessageToActiveSession({ role: 'user', content: userMessage, timestamp });
+    messages = [...messages, { role: 'user', content: userMessage, timestamp }];
+    
+    // Save User Message to DB
+    await saveMessage('user', userMessage);
     
     await tick();
     scrollToBottom();
@@ -225,32 +194,19 @@
         };
       }
 
-      // Build proper config with base_url (map camelCase to snake_case)
-      const aiConfig = {
-        provider: configStore.settings.ai.provider,
-        api_key: configStore.settings.ai.apiKey || null,
-        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
-        model_name: selectedModel,
-        custom_models: configStore.settings.ai.models || []
-      };
-
-      // Build messages array
-      const messages = activeSession.messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }));
-
-      await invoke('send_chat_completion_stream', {
-        messages: messages,
-        config: aiConfig
+      await invoke('stream_chat_completion', {
+        message: userMessage,
+        model: selectedModel,
+        context: context,
+        config: configStore.settings.ai
       });
     } catch (e) {
       console.error('Failed to start stream:', e);
-      addMessageToActiveSession({ 
+      messages = [...messages, { 
         role: 'assistant', 
         content: `**Error**: ${e.toString()}`, 
         timestamp: new Date().toLocaleTimeString() 
-      });
+      }];
       isLoading = false;
     }
   }
@@ -287,7 +243,7 @@
         <span class="text-foreground">History</span>
       </div>
       <button 
-        onclick={createNewSession}
+        onclick={createNewConversation}
         class="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors" 
         title="New Chat"
       >
@@ -310,7 +266,7 @@
     
     <!-- Session List -->
     <div class="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-thin scrollbar-thumb-muted">
-      {#each getGroupedSessions() as [groupName, groupItems]}
+      {#each getGroupedConversations() as [groupName, groupItems]}
         <div class="space-y-1">
           <div class="text-[10px] font-medium text-muted-foreground/70 px-2 uppercase tracking-wider">{groupName}</div>
           {#each groupItems as session}
@@ -319,24 +275,24 @@
             <div 
               class={cn(
                 "w-full px-3 py-2 text-sm rounded-lg flex items-center gap-3 border transition-all group relative overflow-hidden cursor-pointer",
-                activeSessionId === session.id 
+                activeConversationId === session.id 
                   ? "bg-accent/50 text-foreground border-border shadow-sm" 
                   : "border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground"
               )}
-              onclick={() => activeSessionId = session.id}
+              onclick={() => loadMessages(session.id)}
             >
-              <div class={cn("p-1.5 rounded-md transition-colors", activeSessionId === session.id ? "bg-background text-primary" : "bg-muted/30")}>
+              <div class={cn("p-1.5 rounded-md transition-colors", activeConversationId === session.id ? "bg-background text-primary" : "bg-muted/30")}>
                  <MessageSquare size={14} />
               </div>
               <div class="flex-1 min-w-0">
                  <div class="truncate font-medium">{session.title}</div>
-                 <div class="text-[10px] opacity-60 mt-0.5 truncate">{new Date(session.date).toLocaleDateString()}</div>
+                 <div class="text-[10px] opacity-60 mt-0.5 truncate">{new Date(session.updated_at || session.created_at).toLocaleDateString()}</div>
               </div>
               
-              <!-- Delete Button (Visible on Hover/Active) -->
+              <!-- Delete Button -->
               <button 
-                class={cn("absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors bg-background/80 backdrop-blur-sm", activeSessionId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
-                onclick={(e) => deleteSession(e, session.id)}
+                class={cn("absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors bg-background/80 backdrop-blur-sm", activeConversationId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
+                onclick={(e) => deleteConversation(e, session.id)}
                 title="Delete Chat"
               >
                 <Trash2 size={12} />
@@ -361,7 +317,7 @@
     <!-- Chat Header -->
     <header class="h-14 border-b border-border flex items-center justify-between px-6 bg-background/80 backdrop-blur-md sticky top-0 z-20 shadow-sm transition-all duration-300">
       
-      <!-- Model Selector -->
+      <!-- Model Selector (Integrated) -->
       <div class="flex items-center gap-4">
         <div class="w-64">
           <ModelSelector 
@@ -374,16 +330,6 @@
       
       <!-- Header Actions -->
       <div class="flex items-center gap-2">
-         {#if activeSession && activeSession.messages.length > 0}
-           <button class="p-2 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors" title="Export Chat" onclick={exportChat}>
-              <Download size={16} />
-           </button>
-           <button class="p-2 hover:bg-destructive/10 rounded-md text-muted-foreground hover:text-destructive transition-colors" title="Clear History" onclick={clearCurrentHistory}>
-              <Trash2 size={16} />
-           </button>
-           <div class="h-4 w-[1px] bg-border mx-1"></div>
-         {/if}
-         
          <div class="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/30 px-2.5 py-1 rounded-full border border-border/50">
             <span class={cn("w-1.5 h-1.5 rounded-full animate-pulse", isLoading ? "bg-yellow-500" : "bg-green-500")}></span>
             {isLoading ? 'Thinking...' : 'Online'}
@@ -393,7 +339,7 @@
 
     <!-- Messages -->
     <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scroll-smooth pb-40 scrollbar-thin scrollbar-thumb-muted/50 hover:scrollbar-thumb-muted" bind:this={messagesContainer}>
-       {#if currentMessages.length === 0 && !isLoading && !streamingContent}
+       {#if messages.length === 0 && !isLoading && !streamingContent}
          <div class="h-full flex flex-col items-center justify-center text-center space-y-8 opacity-0 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-forwards" style="animation-delay: 100ms">
            <div class="relative">
              <div class="w-24 h-24 bg-gradient-to-br from-primary/20 to-purple-500/20 rounded-3xl flex items-center justify-center text-primary backdrop-blur-xl border border-primary/10 shadow-2xl shadow-primary/10">
@@ -410,44 +356,34 @@
            </div>
 
            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl w-full px-4">
-              {#each [
-                { title: 'Refactor Code', desc: 'Modernize legacy patterns', icon: Sparkles, color: 'text-yellow-500' },
-                { title: 'Explain Logic', desc: 'Understand complex functions', icon: Globe, color: 'text-blue-500' },
-                { title: 'Generate Tests', desc: 'Ensure code reliability', icon: Key, color: 'text-green-500' },
-                { title: 'Optimize', desc: 'Improve performance', icon: Cpu, color: 'text-purple-500' }
-              ] as action}
-                <button 
-                  onclick={() => input = action.title} 
-                  class="p-4 bg-card/50 backdrop-blur-sm border border-border rounded-xl hover:bg-muted/80 text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:border-primary/20 group relative overflow-hidden"
-                >
-                   <div class="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                   <div class="flex items-start gap-3 relative z-10">
-                      <div class={cn("p-2 rounded-lg bg-background border border-border shadow-sm", action.color)}>
-                        <action.icon size={18} />
-                      </div>
-                      <div>
-                        <div class="font-medium text-foreground group-hover:text-primary transition-colors">{action.title}</div>
-                        <div class="text-xs text-muted-foreground mt-0.5">{action.desc}</div>
-                      </div>
-                   </div>
-                </button>
-              {/each}
+              <button onclick={() => input = "Refactor this file"} class="p-4 bg-card/50 backdrop-blur-sm border border-border rounded-xl hover:bg-muted/80 text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:border-primary/20 group relative overflow-hidden">
+                 <div class="flex items-start gap-3 relative z-10">
+                    <div class="p-2 rounded-lg bg-background border border-border shadow-sm text-yellow-500"><Sparkles size={18} /></div>
+                    <div>
+                      <div class="font-medium text-foreground group-hover:text-primary transition-colors">Refactor Code</div>
+                      <div class="text-xs text-muted-foreground mt-0.5">Modernize legacy patterns</div>
+                    </div>
+                 </div>
+              </button>
+              <button onclick={() => input = "Explain logic"} class="p-4 bg-card/50 backdrop-blur-sm border border-border rounded-xl hover:bg-muted/80 text-left transition-all hover:scale-[1.02] hover:shadow-lg hover:border-primary/20 group relative overflow-hidden">
+                 <div class="flex items-start gap-3 relative z-10">
+                    <div class="p-2 rounded-lg bg-background border border-border shadow-sm text-blue-500"><Globe size={18} /></div>
+                    <div>
+                      <div class="font-medium text-foreground group-hover:text-primary transition-colors">Explain Logic</div>
+                      <div class="text-xs text-muted-foreground mt-0.5">Understand complex functions</div>
+                    </div>
+                 </div>
+              </button>
            </div>
          </div>
        {/if}
 
        <!-- Render Messages -->
-       {#each currentMessages as msg}
+       {#each messages as msg}
          <div class={cn("flex gap-4 max-w-4xl mx-auto group animate-in fade-in slide-in-from-bottom-4 duration-500", msg.role === 'user' ? "flex-row-reverse" : "")}>
            <div class={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-border shadow-md transition-transform group-hover:scale-105", 
-             msg.role === 'user' 
-               ? "bg-gradient-to-br from-primary to-blue-600 text-primary-foreground" 
-               : "bg-card text-foreground")}>
-             {#if msg.role === 'user'}
-               <User size={18} />
-             {:else}
-               <Bot size={18} />
-             {/if}
+             msg.role === 'user' ? "bg-gradient-to-br from-primary to-blue-600 text-primary-foreground" : "bg-card text-foreground")}>
+             {#if msg.role === 'user'} <User size={18} /> {:else} <Bot size={18} /> {/if}
            </div>
            
            <div class={cn("flex flex-col max-w-[85%]", msg.role === 'user' ? "items-end" : "items-start")}>
@@ -457,10 +393,7 @@
              </div>
              
              <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md", 
-               msg.role === 'user' 
-                 ? "bg-primary text-primary-foreground rounded-tr-sm" 
-                 : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
-               
+               msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
                {#if msg.role === 'assistant'}
                  <MarkdownRenderer content={msg.content} />
                {:else}
@@ -471,7 +404,7 @@
          </div>
        {/each}
 
-       <!-- Streaming Response / Typing Indicator -->
+       <!-- Streaming Response -->
        {#if isLoading || streamingContent}
           <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0">
@@ -479,8 +412,7 @@
              </div>
              <div class="flex flex-col max-w-[85%] items-start">
                 <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">
-                   Karsa
-                   <span class="text-[10px] opacity-50">• Typing...</span>
+                   Karsa <span class="text-[10px] opacity-50">• Typing...</span>
                 </div>
                 <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm min-w-[60px]">
                    {#if streamingContent}

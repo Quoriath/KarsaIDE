@@ -5,7 +5,7 @@
   import { tick, onMount } from 'svelte';
   import { 
     Send, X, Bot, User, Sparkles, FileCode, Loader2, Eraser, 
-    Settings, Download, Upload, Sliders 
+    Settings, Download, Upload, Sliders, Plus 
   } from 'lucide-svelte';
   import MarkdownRenderer from '../MarkdownRenderer.svelte';
   import ModelSelector from '../ModelSelector.svelte';
@@ -28,7 +28,6 @@
   const SYSTEM_PROMPT = "You are Karsa, an autonomous coding agent. You have access to the user's open file. Answer concisely and provide code blocks when relevant. Use markdown.";
 
   onMount(() => {
-    // Load last session specific to sidebar
     const saved = localStorage.getItem('karsa-sidebar-chat');
     if (saved) {
       try { messages = JSON.parse(saved); } catch (e) {}
@@ -54,13 +53,11 @@
     scrollToBottom();
 
     try {
-      // Build proper config with all required fields (map camelCase to snake_case)
       const config = {
-        provider: configStore.settings.ai.provider,
-        api_key: configStore.settings.ai.apiKey || null,
-        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        ...configStore.settings.ai,
         model_name: selectedModel,
-        custom_models: configStore.settings.ai.models || []
+        temperature,
+        max_tokens: maxTokens
       };
       
       let contextContent = '';
@@ -212,29 +209,49 @@
     {/if}
 
     {#each messages as msg}
-      <div class={cn("flex flex-col gap-1 max-w-full animate-in fade-in slide-in-from-bottom-2 duration-300", msg.role === 'user' ? "items-end" : "items-start")}>
-        <div class={cn("rounded-2xl px-3 py-2 text-sm shadow-sm max-w-[90%]", 
+      <div class={cn("flex gap-3 max-w-full animate-in fade-in slide-in-from-bottom-2 duration-300", msg.role === 'user' ? "flex-row-reverse" : "")}>
+        <!-- Avatar -->
+        <div class={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border border-border shadow-sm", 
           msg.role === 'user' 
-            ? "bg-primary text-primary-foreground rounded-tr-sm" 
-            : "bg-muted/30 border border-border text-foreground rounded-tl-sm")}>
-          
-          {#if msg.role === 'assistant'}
-            <MarkdownRenderer content={msg.content} />
+            ? "bg-gradient-to-br from-primary to-blue-600 text-primary-foreground" 
+            : "bg-card text-foreground")}>
+          {#if msg.role === 'user'}
+            <User size={14} />
           {:else}
-            <div class="whitespace-pre-wrap break-words">{msg.content}</div>
+            <Bot size={14} />
           {/if}
         </div>
-        
-        <span class="text-[10px] text-muted-foreground opacity-50 px-1">
-          {msg.role === 'user' ? 'You' : 'Karsa'} • {msg.timestamp}
-        </span>
+
+        <div class={cn("flex flex-col max-w-[85%]", msg.role === 'user' ? "items-end" : "items-start")}>
+          <div class={cn("rounded-2xl px-3 py-2.5 text-sm shadow-sm", 
+            msg.role === 'user' 
+              ? "bg-primary text-primary-foreground rounded-tr-sm" 
+              : "bg-muted/30 border border-border text-foreground rounded-tl-sm")}>
+            
+            {#if msg.role === 'assistant'}
+              <MarkdownRenderer content={msg.content} />
+            {:else}
+              <div class="whitespace-pre-wrap break-words">{msg.content}</div>
+            {/if}
+          </div>
+          
+          <span class="text-[10px] text-muted-foreground opacity-50 px-1 mt-1">
+            {msg.timestamp}
+          </span>
+        </div>
       </div>
     {/each}
 
     {#if isLoading}
-      <div class="flex items-center gap-2 text-xs text-muted-foreground px-2">
-        <Bot size={12} />
-        <span class="animate-pulse">Thinking...</span>
+      <div class="flex items-center gap-3 px-1">
+        <div class="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
+           <Bot size={14} class="text-muted-foreground" />
+        </div>
+        <div class="flex gap-1">
+           <span class="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce"></span>
+           <span class="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce delay-150"></span>
+           <span class="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce delay-300"></span>
+        </div>
       </div>
     {/if}
   </div>
@@ -242,13 +259,17 @@
   <!-- Input Area -->
   <div class="p-3 bg-background border-t border-border shrink-0">
     <div class="relative flex items-end gap-2 bg-muted/30 border border-border rounded-xl p-1.5 focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50 transition-all shadow-sm">
+      <button class="p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground rounded-lg transition-colors shrink-0 mb-0.5" title="Upload Context">
+         <Plus size={16} />
+      </button>
+      
       <textarea
         bind:this={textarea}
         bind:value={input}
         onkeydown={handleKeydown}
         oninput={autoResize}
-        placeholder="Type a message..."
-        class="flex-1 bg-transparent border-0 resize-none max-h-[150px] min-h-[24px] py-1.5 px-2 focus:ring-0 text-sm placeholder:text-muted-foreground/50 scrollbar-hide"
+        placeholder="Ask anything..."
+        class="flex-1 bg-transparent border-0 resize-none max-h-[150px] min-h-[24px] py-1.5 px-1 focus:ring-0 text-sm placeholder:text-muted-foreground/50 scrollbar-hide"
         rows="1"
       ></textarea>
       

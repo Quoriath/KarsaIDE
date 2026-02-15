@@ -1,8 +1,9 @@
 <script>
-  import { Files, Search, Settings, Sparkles, LayoutGrid, Cpu, Code2 } from 'lucide-svelte';
+  import { Files, Search, Settings, Sparkles, LayoutGrid, Cpu, Code2, PanelBottom } from 'lucide-svelte';
   import { cn } from '../utils.js';
+  import { configStore } from '../../stores/config.svelte.js';
   
-  let { activeView = $bindable('explorer'), activeMode = $bindable('editor'), onChatToggle, onOpenSettings } = $props();
+  let { activeView = $bindable('explorer'), activeMode = $bindable('editor'), onChatToggle, onOpenSettings, onTerminalToggle } = $props();
   
   const views = [
     { id: 'dashboard', icon: LayoutGrid, label: 'Dashboard' },
@@ -80,8 +81,24 @@
   <div class="flex-1"></div>
   
   {#if activeMode === 'editor'}
+    <!-- Toggle Bottom Panel -->
     <button
-      class="w-10 h-10 flex items-center justify-center rounded-lg mb-2 transition-all text-muted-foreground hover:bg-muted hover:text-foreground relative group"
+      class={cn(
+        "w-10 h-10 flex items-center justify-center rounded-lg mb-2 transition-all relative group",
+        configStore.settings.layout.bottomPanelVisible ? "text-foreground bg-muted/50" : "text-muted-foreground hover:text-foreground"
+      )}
+      onclick={onTerminalToggle}
+      title="Toggle Terminal Panel"
+    >
+      <PanelBottom size={20} />
+    </button>
+
+    <!-- Toggle Chat Panel -->
+    <button
+      class={cn(
+        "w-10 h-10 flex items-center justify-center rounded-lg mb-2 transition-all relative group",
+        configStore.settings.layout.chatVisible ? "text-foreground bg-muted/50" : "text-muted-foreground hover:text-foreground"
+      )}
       onclick={onChatToggle}
       title="Toggle AI Chat Panel"
     >
@@ -90,5 +107,5 @@
   {/if}
   
   <!-- User Profile / Account (Placeholder) -->
-  <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-purple-500 mb-4 mt-2 shadow-inner"></div>
+  <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-purple-500 mb-4 mt-2 shadow-inner cursor-pointer hover:ring-2 ring-primary/50 transition-all"></div>
 </div>
