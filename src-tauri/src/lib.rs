@@ -56,6 +56,7 @@ pub fn run() {
             mcp_execute,
             mcp_get_tools,
             mcp_get_system_prompt,
+            apply_smart_patch,
         ])
         .setup(|_app| {
             log::info!("Karsa IDE setup complete");

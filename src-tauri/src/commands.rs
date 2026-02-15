@@ -270,6 +270,16 @@ pub fn mcp_get_system_prompt(state: State<'_, AppState>) -> String {
     mcp.generate_system_prompt()
 }
 
+#[command]
+pub fn apply_smart_patch(
+    path: String,
+    find: String,
+    replace: String,
+) -> Result<serde_json::Value, String> {
+    crate::mcp::smart_apply_patch(&path, &find, &replace)
+        .map_err(|e| e.to_string())
+}
+
 // Terminal commands
 #[command]
 pub fn get_shell_info() -> ShellInfo {

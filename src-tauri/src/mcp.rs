@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::Mutex;
+use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCPRequest {
@@ -32,9 +33,17 @@ pub struct ToolParameter {
     pub required: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatchRequest {
+    pub path: String,
+    pub find: String,
+    pub replace: String,
+}
+
 pub struct MCPCore {
     tools: HashMap<String, Box<dyn MCPTool + Send + Sync>>,
     initialized: bool,
+    app_handle: Option<Arc<AppHandle>>,
 }
 
 pub trait MCPTool {
@@ -50,6 +59,7 @@ impl MCPCore {
         let mut core = Self {
             tools: HashMap::new(),
             initialized: false,
+            app_handle: None,
         };
         
         // Register built-in tools (fast, no I/O)
@@ -63,6 +73,7 @@ impl MCPCore {
         core.register_tool(Box::new(SearchTool));
         core.register_tool(Box::new(ListFilesTool));
         core.register_tool(Box::new(GetFileInfoTool));
+        core.register_tool(Box::new(SmartPatchTool));
         
         core.initialized = true;
         log::info!("MCP Core initialized with {} tools", core.tools.len());
@@ -496,6 +507,137 @@ impl MCPTool for GetFileInfoTool {
             "is_dir": metadata.is_dir(),
             "readonly": metadata.permissions().readonly()
         }))
+    }
+}
+
+// Smart Patch System
+pub fn smart_apply_patch(path: &str, find: &str, replace: &str) -> Result<serde_json::Value> {
+    let content = std::fs::read_to_string(path)?;
+    
+    // Normalize whitespace for matching
+    let find_normalized = find.trim();
+    let find_lines: Vec<&str> = find_normalized.lines().collect();
+    
+    if find_lines.is_empty() {
+        return Err(anyhow::anyhow!("Find pattern is empty"));
+    }
+    
+    // Find exact match first
+    if let Some(pos) = content.find(find_normalized) {
+        let new_content = content.replacen(find_normalized, replace.trim(), 1);
+        std::fs::write(path, &new_content)?;
+        
+        return Ok(serde_json::json!({
+            "success": true,
+            "method": "exact_match",
+            "position": pos
+        }));
+    }
+    
+    // Fuzzy context match
+    let content_lines: Vec<&str> = content.lines().collect();
+    let mut best_match: Option<(usize, usize, f32)> = None;
+    
+    for i in 0..content_lines.len() {
+        if i + find_lines.len() > content_lines.len() {
+            break;
+        }
+        
+        let mut matches = 0;
+        let mut total = 0;
+        
+        for (j, find_line) in find_lines.iter().enumerate() {
+            let content_line = content_lines[i + j].trim();
+            let find_line_trim = find_line.trim();
+            
+            if content_line == find_line_trim {
+                matches += 1;
+            }
+            total += 1;
+        }
+        
+        let similarity = matches as f32 / total as f32;
+        
+        if similarity > 0.8 {
+            best_match = Some((i, i + find_lines.len(), similarity));
+            break;
+        }
+    }
+    
+    if let Some((start, end, similarity)) = best_match {
+        // Get indentation from first line
+        let indent = content_lines[start]
+            .chars()
+            .take_while(|c| c.is_whitespace())
+            .collect::<String>();
+        
+        // Apply indentation to replacement
+        let replace_lines: Vec<String> = replace
+            .trim()
+            .lines()
+            .map(|line| {
+                if line.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("{}{}", indent, line.trim())
+                }
+            })
+            .collect();
+        
+        // Reconstruct file
+        let mut new_lines = content_lines[..start].to_vec();
+        new_lines.extend(replace_lines.iter().map(|s| s.as_str()));
+        new_lines.extend(&content_lines[end..]);
+        
+        let new_content = new_lines.join("\n");
+        std::fs::write(path, &new_content)?;
+        
+        return Ok(serde_json::json!({
+            "success": true,
+            "method": "fuzzy_match",
+            "similarity": similarity,
+            "line_start": start + 1,
+            "line_end": end
+        }));
+    }
+    
+    Err(anyhow::anyhow!(
+        "Could not find unique match. Pattern not found or ambiguous."
+    ))
+}
+
+struct SmartPatchTool;
+impl MCPTool for SmartPatchTool {
+    fn name(&self) -> &str { "smart_patch" }
+    fn description(&self) -> &str { "Apply code patch with fuzzy context matching" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "path".to_string(),
+                param_type: "string".to_string(),
+                description: "File path".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "find".to_string(),
+                param_type: "string".to_string(),
+                description: "Code to find".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "replace".to_string(),
+                param_type: "string".to_string(),
+                description: "Replacement code".to_string(),
+                required: true,
+            },
+        ]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
+        let find = params["find"].as_str().ok_or(anyhow::anyhow!("Missing find"))?;
+        let replace = params["replace"].as_str().ok_or(anyhow::anyhow!("Missing replace"))?;
+        
+        smart_apply_patch(path, find, replace)
     }
 }
 
