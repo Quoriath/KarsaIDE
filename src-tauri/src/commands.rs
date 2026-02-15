@@ -445,7 +445,9 @@ pub fn mcp_get_tools(state: State<'_, AppState>) -> Vec<crate::mcp::ToolDefiniti
 #[command]
 pub fn mcp_get_system_prompt(state: State<'_, AppState>) -> String {
     let mcp = state.mcp.lock().unwrap();
-    mcp.generate_system_prompt()
+    let prompt = mcp.generate_system_prompt();
+    log::info!("Generated system prompt: {} chars", prompt.len());
+    prompt
 }
 
 #[command]

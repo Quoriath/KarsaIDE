@@ -205,8 +205,12 @@ Active File: ${fsStore.activeFile?.name || 'None'}
 ====
 `;
       
+      const systemPrompt = mcpPrompt + systemInfo;
+      console.log('System prompt length:', systemPrompt.length);
+      console.log('System prompt preview:', systemPrompt.substring(0, 200));
+      
       const msgs = [
-        { role: 'system', content: mcpPrompt + systemInfo },
+        { role: 'system', content: systemPrompt },
         ...messages.slice(-2).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
       ];
