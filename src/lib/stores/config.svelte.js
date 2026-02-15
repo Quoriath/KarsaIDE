@@ -56,6 +56,11 @@ class ConfigStore {
   updateAiConfig(config) {
     this.settings.ai = { ...this.settings.ai, ...config };
     this.save();
+    
+    // Sync specifically with backend AI service as requested
+    invoke('save_ai_config', { config: this.settings.ai }).catch(err => {
+        console.error('Failed to sync AI config to backend:', err);
+    });
   }
 
   updateLayout(layout) {

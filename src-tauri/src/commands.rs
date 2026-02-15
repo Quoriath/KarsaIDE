@@ -1,5 +1,5 @@
-use crate::ai_client::AIClient;
-use crate::config_manager::{AIConfig, KarsaConfig, load_config, save_config};
+use crate::ai_client::{AIClient, ModelInfo};
+use crate::config_manager::{AIConfig, KarsaConfig, SessionData, load_config, save_config, update_session};
 use crate::terminal::Terminal;
 use tauri::{command, AppHandle, State};
 use std::sync::{Arc, Mutex};
@@ -28,6 +28,12 @@ pub fn save_ai_config(config: KarsaConfig) -> Result<(), String> {
 }
 
 #[command]
+pub async fn fetch_kilo_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+    let client = AIClient::new();
+    client.fetch_kilo_models(api_key).await
+}
+
+#[command]
 pub async fn test_ai_connection(config: AIConfig) -> Result<String, String> {
     let client = AIClient::new();
     client.test_connection(&config).await
@@ -50,6 +56,16 @@ pub async fn send_chat_completion_stream(
 ) -> Result<(), String> {
     let client = AIClient::new();
     client.send_chat_completion_stream(app, messages, &config).await
+}
+
+#[command]
+pub fn get_session() -> SessionData {
+    load_config().session
+}
+
+#[command]
+pub fn save_session(session: SessionData) -> Result<(), String> {
+    update_session(session).map_err(|e| e.to_string())
 }
 
 #[command]

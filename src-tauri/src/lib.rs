@@ -26,9 +26,12 @@ pub fn run() {
             delete_path,
             get_ai_config,
             save_ai_config,
+            fetch_kilo_models,
             test_ai_connection,
             send_chat_completion,
             send_chat_completion_stream,
+            get_session,
+            save_session,
             spawn_terminal,
             write_to_terminal,
         ])

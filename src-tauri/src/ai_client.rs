@@ -38,6 +38,25 @@ struct Delta {
     content: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct KiloModelsResponse {
+    data: Vec<KiloModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KiloModel {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
 pub struct AIClient {
     client: Client,
 }
@@ -50,6 +69,40 @@ impl AIClient {
                 .build()
                 .unwrap(),
         }
+    }
+
+    pub async fn fetch_kilo_models(&self, api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+        let mut req = self.client
+            .get("https://api.kilo.ai/api/gateway/models");
+
+        if let Some(key) = api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+
+        let response = req
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch models: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("API error: {}", response.status()));
+        }
+
+        let kilo_response: KiloModelsResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        let models = kilo_response.data
+            .into_iter()
+            .map(|m| ModelInfo {
+                id: m.id.clone(),
+                name: m.name.unwrap_or_else(|| m.id.clone()),
+                provider: "kilo".to_string(),
+            })
+            .collect();
+
+        Ok(models)
     }
 
     pub async fn test_connection(&self, _config: &AIConfig) -> Result<String, String> {

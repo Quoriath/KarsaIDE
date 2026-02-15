@@ -27,12 +27,38 @@ pub struct EditorConfig {
     pub tab_size: u32,
     pub word_wrap: bool,
     pub theme: String,
+    pub auto_save: bool,
+    pub auto_save_delay: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalConfig {
+    pub shell: Option<String>,
+    pub font_size: u32,
+    pub scrollback: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionData {
+    pub last_workspace: Option<String>,
+    pub open_files: Vec<String>,
+    pub active_file: Option<String>,
+    pub recent_workspaces: Vec<RecentWorkspace>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentWorkspace {
+    pub path: String,
+    pub name: String,
+    pub last_opened: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KarsaConfig {
     pub ai: AIConfig,
     pub editor: EditorConfig,
+    pub terminal: TerminalConfig,
+    pub session: SessionData,
 }
 
 impl Default for AIConfig {
@@ -54,6 +80,29 @@ impl Default for EditorConfig {
             tab_size: 2,
             word_wrap: true,
             theme: "dark".to_string(),
+            auto_save: true,
+            auto_save_delay: 1000,
+        }
+    }
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            shell: None,
+            font_size: 13,
+            scrollback: 1000,
+        }
+    }
+}
+
+impl Default for SessionData {
+    fn default() -> Self {
+        Self {
+            last_workspace: None,
+            open_files: vec![],
+            active_file: None,
+            recent_workspaces: vec![],
         }
     }
 }
@@ -63,6 +112,8 @@ impl Default for KarsaConfig {
         Self {
             ai: AIConfig::default(),
             editor: EditorConfig::default(),
+            terminal: TerminalConfig::default(),
+            session: SessionData::default(),
         }
     }
 }
@@ -115,4 +166,10 @@ pub fn get_config_dir() -> Result<PathBuf> {
         .context("Failed to create config directory")?;
     
     Ok(config_dir)
+}
+
+pub fn update_session(session: SessionData) -> Result<()> {
+    let mut config = load_config();
+    config.session = session;
+    save_config(&config)
 }
