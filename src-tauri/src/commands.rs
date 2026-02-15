@@ -99,14 +99,20 @@ pub fn get_conversations(
 
 #[command]
 pub fn add_message(
+    app: AppHandle,
     conversation_id: i64,
     role: String,
     content: String,
     state: State<'_, AppState>,
 ) -> Result<i64, String> {
     let db = state.db.lock().unwrap();
-    db.add_message(conversation_id, &role, &content)
-        .map_err(|e| e.to_string())
+    let result = db.add_message(conversation_id, &role, &content)
+        .map_err(|e| e.to_string())?;
+    
+    // Emit event for real-time sync
+    let _ = app.emit("conversation-updated", serde_json::json!({ "id": conversation_id }));
+    
+    Ok(result)
 }
 
 #[command]
@@ -126,6 +132,17 @@ pub fn delete_conversation(
 ) -> Result<(), String> {
     let db = state.db.lock().unwrap();
     db.delete_conversation(id)
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn search_conversations(
+    query: String,
+    mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Conversation>, String> {
+    let db = state.db.lock().unwrap();
+    db.search_conversations(&query, mode.as_deref())
         .map_err(|e| e.to_string())
 }
 

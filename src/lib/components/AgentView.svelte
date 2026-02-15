@@ -57,7 +57,16 @@
       scrollToBottom();
     });
 
-    unlistenHandlers.push(unlistenChunk, unlistenDone);
+    // 3. Listen for conversation updates (real-time sync)
+    const unlistenUpdate = await listen('conversation-updated', async (event) => {
+      await loadConversations();
+      // Reload current conversation if it was updated
+      if (activeConversationId === event.payload.id) {
+        await loadMessages(activeConversationId);
+      }
+    });
+
+    unlistenHandlers.push(unlistenChunk, unlistenDone, unlistenUpdate);
   });
 
   onDestroy(() => {

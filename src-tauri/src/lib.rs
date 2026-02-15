@@ -43,6 +43,7 @@ pub fn run() {
             add_message,
             get_messages,
             delete_conversation,
+            search_conversations,
             toggle_terminal,
             toggle_chat,
             get_shell_info,

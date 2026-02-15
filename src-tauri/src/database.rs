@@ -32,6 +32,14 @@ impl Database {
         let db_path = Self::get_db_path()?;
         let conn = Connection::open(db_path)?;
         
+        // Enable WAL mode for better concurrency
+        conn.execute_batch("
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            PRAGMA cache_size=10000;
+            PRAGMA temp_store=MEMORY;
+        ")?;
+        
         conn.execute(
             "CREATE TABLE IF NOT EXISTS conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,9 +65,24 @@ impl Database {
             [],
         )?;
         
+        // Add indexes for performance
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_conversation 
-             ON messages(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_conversations_mode ON conversations(mode)",
+            [],
+        )?;
+        
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC)",
+            [],
+        )?;
+        
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)",
+            [],
+        )?;
+        
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC)",
             [],
         )?;
         
@@ -140,7 +163,7 @@ impl Database {
     }
     
     pub fn get_messages(&self, conversation_id: i64) -> Result<Vec<Message>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare_cached(
             "SELECT id, conversation_id, role, content, timestamp
              FROM messages WHERE conversation_id = ?1
              ORDER BY timestamp ASC"
@@ -162,5 +185,49 @@ impl Database {
     pub fn delete_conversation(&self, id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM conversations WHERE id = ?1", params![id])?;
         Ok(())
+    }
+    
+    // Batch operations for efficiency
+    pub fn add_messages_batch(&self, conversation_id: i64, messages: Vec<(&str, &str)>) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        let now = chrono::Utc::now().timestamp();
+        
+        for (role, content) in messages {
+            tx.execute(
+                "INSERT INTO messages (conversation_id, role, content, timestamp) VALUES (?1, ?2, ?3, ?4)",
+                params![conversation_id, role, content, now],
+            )?;
+        }
+        
+        tx.execute(
+            "UPDATE conversations SET updated_at = ?1 WHERE id = ?2",
+            params![now, conversation_id],
+        )?;
+        
+        tx.commit()?;
+        Ok(())
+    }
+    
+    pub fn search_conversations(&self, query: &str, mode: Option<&str>) -> Result<Vec<Conversation>> {
+        let sql = if mode.is_some() {
+            "SELECT id, mode, title, context_path, model, created_at, updated_at
+             FROM conversations WHERE mode = ?1 AND title LIKE ?2
+             ORDER BY updated_at DESC LIMIT 50"
+        } else {
+            "SELECT id, mode, title, context_path, model, created_at, updated_at
+             FROM conversations WHERE title LIKE ?1
+             ORDER BY updated_at DESC LIMIT 50"
+        };
+        
+        let mut stmt = self.conn.prepare_cached(sql)?;
+        let search_pattern = format!("%{}%", query);
+        
+        let rows = if let Some(m) = mode {
+            stmt.query_map(params![m, search_pattern], Self::map_conversation)?
+        } else {
+            stmt.query_map(params![search_pattern], Self::map_conversation)?
+        };
+        
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }

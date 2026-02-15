@@ -36,12 +36,11 @@
     try {
       await invoke('spawn_terminal', { id: termId, shell: null });
       unlistenFn = await listen('terminal-output', (event) => {
-        const payload = event.payload;
-        if (payload.id === termId && payload.data) {
-           const text = decoder.decode(new Uint8Array(payload.data));
-           terminalOutput += text;
-           scrollToBottom();
-        }
+        const data = event.payload;
+        // Payload is array of bytes directly
+        const text = decoder.decode(new Uint8Array(data));
+        terminalOutput += text;
+        scrollToBottom();
       });
     } catch (err) {
       terminalOutput += `\nError spawning terminal: ${err}\n`;

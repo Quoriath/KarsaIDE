@@ -21,6 +21,8 @@
   let isLoading = $state(false);
   let showSettings = $state(false);
   let showHistory = $state(false);
+  let showAllModes = $state(false);  // Toggle for unified view
+  let searchQuery = $state('');
   let messagesContainer;
   let textarea;
   
@@ -41,16 +43,31 @@
         messages[messages.length - 1].content += content;
       }
     });
+    
+    // Listen for conversation updates (real-time sync)
+    await listen('conversation-updated', async (event) => {
+      await loadConversations();
+      // Reload current conversation if it was updated
+      if (activeConversationId === event.payload.id) {
+        await loadConversation(activeConversationId);
+      }
+    });
   });
 
   async function loadConversations() {
     try {
-      conversations = await invoke('get_conversations', {
-        mode: 'editor',
-        limit: 50
-      });
+      if (searchQuery.trim()) {
+        conversations = await invoke('search_conversations', {
+          query: searchQuery,
+          mode: showAllModes ? null : 'editor'
+        });
+      } else {
+        conversations = await invoke('get_conversations', {
+          mode: showAllModes ? null : 'editor',
+          limit: 50
+        });
+      }
       
-      // Load last conversation
       if (conversations.length > 0 && !activeConversationId) {
         await loadConversation(conversations[0].id);
       }
@@ -237,6 +254,37 @@
   <!-- History Sidebar -->
   {#if showHistory}
     <div class="border-b border-border bg-muted/5 max-h-64 overflow-y-auto">
+      <!-- Mode Toggle -->
+      <div class="px-2 pt-2 pb-1 space-y-2">
+        <input
+          type="text"
+          bind:value={searchQuery}
+          oninput={loadConversations}
+          placeholder="Search chats..."
+          class="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary outline-none"
+        />
+        <div class="flex items-center gap-2 text-[10px]">
+          <button
+            class={cn(
+              "px-2 py-1 rounded transition-colors",
+              !showAllModes ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+            )}
+            onclick={() => { showAllModes = false; loadConversations(); }}
+          >
+            Editor
+          </button>
+          <button
+            class={cn(
+              "px-2 py-1 rounded transition-colors",
+              showAllModes ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+            )}
+            onclick={() => { showAllModes = true; loadConversations(); }}
+          >
+            All Chats
+          </button>
+        </div>
+      </div>
+      
       <div class="p-2 space-y-1">
         {#each conversations as conv}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -251,7 +299,17 @@
             onclick={() => loadConversation(conv.id)}
           >
             <div class="flex-1 truncate">
-              <div class="font-medium truncate">{conv.title}</div>
+              <div class="flex items-center gap-2">
+                <div class="font-medium truncate">{conv.title}</div>
+                {#if showAllModes}
+                  <span class={cn(
+                    "text-[9px] px-1.5 py-0.5 rounded",
+                    conv.mode === 'agent' ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                  )}>
+                    {conv.mode}
+                  </span>
+                {/if}
+              </div>
               <div class="text-[10px] opacity-70">{new Date(conv.updated_at).toLocaleDateString()}</div>
             </div>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
