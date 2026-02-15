@@ -31,7 +31,7 @@
   let maxTokens = $state(2000);
   let selectedModel = $state(configStore.settings.ai.selectedModel || 'gemini-1.5-pro');
 
-  const SYSTEM_PROMPT = "You are Karsa, an autonomous coding agent. You have access to the user's open file. Answer concisely and provide code blocks when relevant. Use markdown.";
+  const SYSTEM_PROMPT = `You are Karsa, a coding assistant. Be concise and clear. Provide direct answers without excessive formality or casual language. Use code blocks when relevant.`;
 
   onMount(async () => {
     await loadConversations();
@@ -94,7 +94,7 @@
 
   async function createNewConversation() {
     try {
-      const title = `Chat ${new Date().toLocaleDateString()}`;
+      const title = "New Chat";  // Temporary title
       const id = await invoke('create_conversation', {
         mode: 'editor',
         title,
@@ -107,6 +107,34 @@
       await loadConversations();
     } catch (e) {
       console.error('Failed to create conversation:', e);
+    }
+  }
+  
+  async function generateAndUpdateTitle(firstMessage) {
+    if (!activeConversationId) return;
+    
+    try {
+      const config = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: []
+      };
+      
+      const title = await invoke('generate_chat_title', {
+        firstMessage,
+        config
+      });
+      
+      await invoke('update_conversation_title', {
+        id: activeConversationId,
+        title
+      });
+      
+      await loadConversations();
+    } catch (e) {
+      console.error('Failed to generate title:', e);
     }
   }
 
@@ -143,6 +171,7 @@
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
+    const isFirstMessage = messages.length === 0;
     input = '';
     if (textarea) textarea.style.height = 'auto';
     
@@ -153,6 +182,11 @@
     
     // Save to database
     await saveMessage('user', userMessage);
+    
+    // Generate title for first message
+    if (isFirstMessage) {
+      generateAndUpdateTitle(userMessage);
+    }
     
     await tick();
     scrollToBottom();

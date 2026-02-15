@@ -2,19 +2,39 @@
   import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { fsStore } from '../stores/fileSystem.svelte.js';
+  import { configStore } from '../stores/config.svelte.js';
+  import { onMount } from 'svelte';
   import { 
     FilePlus, FolderOpen, FileCode, GitBranch, Clock, Command, 
     Settings, HelpCircle, Book, Zap, ArrowRight 
   } from 'lucide-svelte';
   
-  let recents = $state([
-    { name: 'KarsaIDE', path: '/home/user/projects/karsa-ide', lastOpened: '2h ago' },
-    { name: 'website-v2', path: '/home/user/work/website-v2', lastOpened: '5h ago' },
-    { name: 'rust-learning', path: '/home/user/learn/rust', lastOpened: '1d ago' },
-    { name: 'tauri-app', path: '/home/user/projects/tauri-app', lastOpened: '3d ago' },
-    { name: 'backend-api', path: '/home/user/work/backend-api', lastOpened: '4d ago' },
-    { name: 'notes', path: '/home/user/personal/notes', lastOpened: '1w ago' },
-  ]);
+  let recents = $state([]);
+  let recentConversations = $state([]);
+
+  onMount(async () => {
+    // Load recent conversations
+    try {
+      const convs = await invoke('get_conversations', { mode: null, limit: 6 });
+      recentConversations = convs;
+    } catch (e) {
+      console.error('Failed to load recent conversations:', e);
+    }
+    
+    // Load recent files from session
+    try {
+      const session = await invoke('get_session');
+      if (session.recent_files) {
+        recents = session.recent_files.slice(0, 6).map(path => ({
+          name: path.split('/').pop(),
+          path,
+          lastOpened: 'Recently'
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to load session:', e);
+    }
+  });
 
   async function openFolder() {
     try {
@@ -96,8 +116,16 @@
       </div>
       
       <div class="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-muted">
+        {#if recents.length === 0 && recentConversations.length === 0}
+          <div class="text-center py-8 text-xs text-muted-foreground">
+            No recent activity
+          </div>
+        {/if}
+        
         {#each recents as item}
-          <button class="group w-full p-2.5 rounded-lg hover:bg-accent/50 text-left transition-all border border-transparent hover:border-border/50 mb-1">
+          <button 
+            onclick={() => fsStore.openFile(item.path)}
+            class="group w-full p-2.5 rounded-lg hover:bg-accent/50 text-left transition-all border border-transparent hover:border-border/50 mb-1">
             <div class="flex items-center justify-between mb-1">
                <span class="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{item.name}</span>
                <span class="text-[10px] text-muted-foreground">{item.lastOpened}</span>

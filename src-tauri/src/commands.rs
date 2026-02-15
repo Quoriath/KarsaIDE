@@ -63,6 +63,27 @@ pub async fn send_chat_completion(
 }
 
 #[command]
+pub async fn generate_chat_title(
+    first_message: String,
+    config: AIConfig,
+) -> Result<String, String> {
+    let client = AIClient::new();
+    let messages = vec![
+        crate::ai_client::ChatMessage {
+            role: "system".to_string(),
+            content: "Generate a short 3-5 word title for this chat. Respond with ONLY the title, no quotes or extra text.".to_string(),
+        },
+        crate::ai_client::ChatMessage {
+            role: "user".to_string(),
+            content: first_message,
+        },
+    ];
+    
+    let title = client.send_chat_completion(messages, &config).await?;
+    Ok(title.trim().trim_matches('"').to_string())
+}
+
+#[command]
 pub async fn send_chat_completion_stream(
     app: AppHandle,
     messages: Vec<crate::ai_client::ChatMessage>,
@@ -133,6 +154,21 @@ pub fn delete_conversation(
     let db = state.db.lock().unwrap();
     db.delete_conversation(id)
         .map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn update_conversation_title(
+    app: AppHandle,
+    id: i64,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    db.update_conversation_title(id, &title)
+        .map_err(|e| e.to_string())?;
+    
+    let _ = app.emit("conversation-updated", serde_json::json!({ "id": id }));
+    Ok(())
 }
 
 #[command]

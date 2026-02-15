@@ -187,6 +187,15 @@ impl Database {
         Ok(())
     }
     
+    pub fn update_conversation_title(&self, id: i64, title: &str) -> Result<()> {
+        let now = chrono::Utc::now().timestamp();
+        self.conn.execute(
+            "UPDATE conversations SET title = ?1, updated_at = ?2 WHERE id = ?3",
+            params![title, now, id],
+        )?;
+        Ok(())
+    }
+    
     // Batch operations for efficiency
     pub fn add_messages_batch(&self, conversation_id: i64, messages: Vec<(&str, &str)>) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
