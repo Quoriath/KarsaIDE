@@ -58,7 +58,12 @@
       if (streamingContent.trim() && isLoading) {
         await saveMessage('assistant', streamingContent);
         const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        messages = [...messages, { role: 'assistant', content: streamingContent, timestamp }];
+        messages = [...messages, { 
+          role: 'assistant', 
+          content: streamingContent, 
+          reasoning: streamingReasoning,
+          timestamp 
+        }];
       }
       streamingContent = '';
       streamingReasoning = '';
@@ -497,6 +502,18 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
                 <span class="text-[10px] opacity-50">• {msg.timestamp}</span>
              </div>
              
+             <!-- Show reasoning if exists -->
+             {#if msg.role === 'assistant' && msg.reasoning}
+               <details class="mb-2 w-full">
+                 <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-2 py-1 px-2 rounded bg-muted/30">
+                   <span class="text-[10px]">💭</span> Thinking process
+                 </summary>
+                 <div class="mt-2 text-xs text-muted-foreground bg-muted/20 rounded p-3 border border-border/50 whitespace-pre-wrap">
+                   {msg.reasoning}
+                 </div>
+               </details>
+             {/if}
+             
              <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text", 
                msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
                {#if msg.role === 'assistant'}
@@ -510,7 +527,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
        {/each}
 
        <!-- Streaming Response -->
-       {#if (isLoading && !streamingContent) || streamingContent}
+       {#if isLoading && (streamingContent || streamingReasoning || !messages.length)}
           <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0">
                <Bot size={18} class="text-muted-foreground" />
