@@ -193,35 +193,85 @@ impl MCPCore {
         let tools_json = serde_json::to_string_pretty(&self.get_tool_definitions()).unwrap();
         
         format!(
-            r#"You have MCP tools to access the codebase. When you need information, call tools using JSON array format.
+            r#"You are an AI assistant with MCP tools for codebase access. Follow these rules STRICTLY.
 
+═══════════════════════════════════════════════════════════════
+⚠️  CRITICAL RULES - VIOLATION = IMMEDIATE FAILURE ⚠️
+═══════════════════════════════════════════════════════════════
+
+1. TOKEN LIMITS (HARD ENFORCED):
+   - Max 5 tool calls per conversation
+   - Max 1000 lines per file_read
+   - Max 3 messages in context
+   - Tool results truncated to 2000 chars
+
+2. TOOL CALL FORMAT (EXACT):
+   [{{"name": "tool_name", "arguments": {{"param": "value"}}}}]
+   
+   ❌ WRONG: {{"tool": "name"}} or {{"name": "tool_name"}}
+   ✅ RIGHT: [{{"name": "tool_name", "arguments": {{}}}}]
+
+3. MANDATORY WORKFLOW:
+   Step 1: ALWAYS call get_project_map() first
+   Step 2: Use search() to find relevant files
+   Step 3: Use get_file_info() to check file size
+   Step 4: Use file_read() with range if needed
+   
+   ❌ NEVER skip get_project_map on first interaction
+   ❌ NEVER read files without checking size first
+   ❌ NEVER use file_read on files >500 lines without range
+
+4. SEARCH RULES:
+   - Use specific patterns: "fn login", "class User"
+   - Use regex for semantic search: "class.*Component", "fn\\s+\\w+"
+   - Add file_type filter: {{"file_type": "rs"}}
+   - Max 50 results per search
+
+5. FILE READING:
+   - file_read() defaults to first 500 lines
+   - For specific range: {{"path": "...", "start_line": 100, "end_line": 200}}
+   - For large files: use list_symbols() first, then file_read() with range
+   - NEVER request >1000 lines
+
+═══════════════════════════════════════════════════════════════
 AVAILABLE TOOLS:
+═══════════════════════════════════════════════════════════════
 {}
 
-⚠️ TOKEN LIMITS: Max 5 tools, 2000 chars/result, 3 messages context
+═══════════════════════════════════════════════════════════════
+EXAMPLES:
+═══════════════════════════════════════════════════════════════
 
-TOOL CALL FORMAT (use this EXACT format):
-[{{"name": "tool_name", "arguments": {{"param": "value"}}}}]
+User: "Show me the project"
+You: [{{"name": "get_project_map", "arguments": {{}}}}]
+System: (returns structure)
+You: "Here's your project structure with X files..."
 
-COMMON TASKS:
-- "show project" → [{{"name": "get_project_map", "arguments": {{}}}}]
-- "list files" → [{{"name": "list_files", "arguments": {{"path": ".", "recursive": true}}}}]
-- "read file" → [{{"name": "file_read", "arguments": {{"path": "./path/to/file"}}}}]
-- "search code" → [{{"name": "search", "arguments": {{"pattern": "keyword", "path": "."}}}}]
+User: "Find all React components"
+You: [{{"name": "search", "arguments": {{"pattern": "class.*Component", "file_type": "js"}}}}]
+System: (returns matches)
+You: "Found N components: ..."
 
-RULES:
-1. Check file size first: get_file_info
-2. Large files (>500 lines): use file_read_range
-3. Find functions: list_symbols then file_read_range
-4. Be specific with searches
+User: "Read main.rs"
+You: [{{"name": "get_file_info", "arguments": {{"path": "./src/main.rs"}}}}]
+System: (returns 1500 lines)
+You: [{{"name": "file_read", "arguments": {{"path": "./src/main.rs", "start_line": 1, "end_line": 500}}}}]
+System: (returns first 500 lines)
+You: "Here's the first 500 lines of main.rs..."
 
-WORKFLOW:
-1. User asks question
-2. You return JSON array of tool calls
-3. System executes and returns results
-4. You provide natural language answer
+═══════════════════════════════════════════════════════════════
+RESPONSE FORMAT:
+═══════════════════════════════════════════════════════════════
 
-IMPORTANT: Always start by calling get_project_map to understand the codebase structure."#,
+1. If you need data → return JSON array ONLY
+2. After receiving results → provide natural language answer
+3. Use code blocks with syntax highlighting
+4. Cite file paths and line numbers
+5. Be concise - every token counts
+
+═══════════════════════════════════════════════════════════════
+START: Call get_project_map() to understand the codebase structure.
+═══════════════════════════════════════════════════════════════"#,
             tools_json
         )
     }
@@ -230,32 +280,67 @@ IMPORTANT: Always start by calling get_project_map to understand the codebase st
 struct FileReadTool;
 impl MCPTool for FileReadTool {
     fn name(&self) -> &str { "file_read" }
-    fn description(&self) -> &str { "Read file contents (max 1000 lines, use file_read_range for larger files)" }
+    fn description(&self) -> &str { 
+        "Read file contents. Default: first 500 lines. Optional: specify start_line and end_line for range reading." 
+    }
     fn parameters(&self) -> Vec<ToolParameter> {
-        vec![ToolParameter {
-            name: "path".to_string(),
-            param_type: "string".to_string(),
-            description: "File path".to_string(),
-            required: true,
-        }]
+        vec![
+            ToolParameter {
+                name: "path".to_string(),
+                param_type: "string".to_string(),
+                description: "File path (required)".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "start_line".to_string(),
+                param_type: "number".to_string(),
+                description: "Start line (1-indexed, optional, default: 1)".to_string(),
+                required: false,
+            },
+            ToolParameter {
+                name: "end_line".to_string(),
+                param_type: "number".to_string(),
+                description: "End line (1-indexed, optional, default: 500)".to_string(),
+                required: false,
+            },
+        ]
     }
     fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
         let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
         let content = std::fs::read_to_string(path)?;
         let lines: Vec<&str> = content.lines().collect();
+        let total_lines = lines.len();
         
-        // Context Economy: Reject very large files
-        if lines.len() > 1000 {
+        // Get range parameters (default: first 500 lines)
+        let start = params["start_line"].as_u64().unwrap_or(1).max(1) as usize;
+        let end = params["end_line"].as_u64().unwrap_or(500).min(total_lines as u64) as usize;
+        
+        // Validate range
+        if start > total_lines {
+            return Err(anyhow::anyhow!("start_line {} exceeds file length {}", start, total_lines));
+        }
+        
+        let actual_end = end.min(total_lines);
+        let range_size = actual_end - start + 1;
+        
+        // Hard limit: max 1000 lines per read
+        if range_size > 1000 {
             return Err(anyhow::anyhow!(
-                "File too large ({} lines). Use file_read_range(path, start, end) instead. Max 1000 lines per read.",
-                lines.len()
+                "Range too large ({} lines). Max 1000 lines per read. Use smaller ranges.",
+                range_size
             ));
         }
         
+        let selected_lines = &lines[(start - 1)..actual_end];
+        let result_content = selected_lines.join("\n");
+        
         Ok(serde_json::json!({ 
-            "content": content,
-            "lines": lines.len(),
-            "size_bytes": content.len()
+            "content": result_content,
+            "start_line": start,
+            "end_line": actual_end,
+            "lines_returned": selected_lines.len(),
+            "total_lines": total_lines,
+            "truncated": actual_end < total_lines
         }))
     }
 }
@@ -385,19 +470,27 @@ impl MCPTool for FileWriteTool {
 struct SearchTool;
 impl MCPTool for SearchTool {
     fn name(&self) -> &str { "search" }
-    fn description(&self) -> &str { "Search codebase with ripgrep" }
+    fn description(&self) -> &str { 
+        "Semantic search in codebase. Supports regex patterns (e.g., 'class.*Component', 'fn\\s+login'). Returns file paths and line numbers with context." 
+    }
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![
             ToolParameter {
                 name: "pattern".to_string(),
                 param_type: "string".to_string(),
-                description: "Search pattern".to_string(),
+                description: "Search pattern (supports regex, e.g., 'class.*', 'fn\\s+\\w+')".to_string(),
                 required: true,
             },
             ToolParameter {
                 name: "path".to_string(),
                 param_type: "string".to_string(),
-                description: "Search path".to_string(),
+                description: "Search path (default: current directory)".to_string(),
+                required: false,
+            },
+            ToolParameter {
+                name: "file_type".to_string(),
+                param_type: "string".to_string(),
+                description: "Filter by file extension (e.g., 'rs', 'js', 'py')".to_string(),
                 required: false,
             },
         ]
@@ -405,16 +498,47 @@ impl MCPTool for SearchTool {
     fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
         let pattern = params["pattern"].as_str().ok_or(anyhow::anyhow!("Missing pattern"))?;
         let path = params["path"].as_str().unwrap_or(".");
+        let file_type = params["file_type"].as_str();
         
-        let output = std::process::Command::new("rg")
-            .arg(pattern)
+        let mut cmd = std::process::Command::new("rg");
+        cmd.arg(pattern)
             .arg(path)
             .arg("--json")
             .arg("--max-count=50")
-            .output()?;
+            .arg("--context=2")
+            .arg("--smart-case");
+        
+        if let Some(ft) = file_type {
+            cmd.arg("--type").arg(ft);
+        }
+        
+        let output = cmd.output()?;
+        
+        if !output.status.success() {
+            return Ok(serde_json::json!({ 
+                "matches": [],
+                "message": "No matches found"
+            }));
+        }
         
         let results = String::from_utf8_lossy(&output.stdout);
-        Ok(serde_json::json!({ "results": results }))
+        let lines: Vec<&str> = results.lines().collect();
+        
+        // Parse ripgrep JSON output
+        let mut matches = Vec::new();
+        for line in lines {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+                if json["type"] == "match" {
+                    matches.push(json);
+                }
+            }
+        }
+        
+        Ok(serde_json::json!({ 
+            "matches": matches,
+            "total": matches.len(),
+            "pattern": pattern
+        }))
     }
 }
 
