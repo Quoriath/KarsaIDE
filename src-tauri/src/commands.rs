@@ -71,7 +71,7 @@ pub async fn generate_chat_title(
     let messages = vec![
         crate::ai_client::ChatMessage {
             role: "system".to_string(),
-            content: "Generate a short 3-5 word title for this chat. Respond with ONLY the title, no quotes or extra text.".to_string(),
+            content: "Generate a short 3-5 word title for this chat. Rules: No quotes, no punctuation at end, descriptive and specific. Example: 'Fix React Hook Error' or 'Optimize Database Query'.".to_string(),
         },
         crate::ai_client::ChatMessage {
             role: "user".to_string(),
@@ -80,7 +80,21 @@ pub async fn generate_chat_title(
     ];
     
     let title = client.send_chat_completion(messages, &config).await?;
-    Ok(title.trim().trim_matches('"').to_string())
+    
+    // Sanitize and validate
+    let clean_title = title
+        .trim()
+        .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == '!' || c == '?')
+        .chars()
+        .take(50)  // Max 50 chars
+        .collect::<String>();
+    
+    // Fallback if AI returns empty or invalid
+    if clean_title.is_empty() || clean_title.len() < 3 {
+        return Ok("New Chat".to_string());
+    }
+    
+    Ok(clean_title)
 }
 
 #[command]
