@@ -193,47 +193,35 @@ impl MCPCore {
         let tools_json = serde_json::to_string_pretty(&self.get_tool_definitions()).unwrap();
         
         format!(
-            r#"AVAILABLE MCP TOOLS:
+            r#"You have MCP tools to access the codebase. When you need information, call tools using JSON array format.
+
+AVAILABLE TOOLS:
 {}
 
-⚠️ CRITICAL TOKEN LIMITS ⚠️
-- MAX 5 tool calls per conversation
-- Tool results truncated to 2000 chars
-- Only last 3 messages kept in context
-- MUST use targeted, specific tool calls
+⚠️ TOKEN LIMITS: Max 5 tools, 2000 chars/result, 3 messages context
 
-HOW TO USE TOOLS:
-Respond with JSON array ONLY when you need data:
-
+TOOL CALL FORMAT (use this EXACT format):
 [{{"name": "tool_name", "arguments": {{"param": "value"}}}}]
 
-After receiving tool results, provide your FINAL answer.
+COMMON TASKS:
+- "show project" → [{{"name": "get_project_map", "arguments": {{}}}}]
+- "list files" → [{{"name": "list_files", "arguments": {{"path": ".", "recursive": true}}}}]
+- "read file" → [{{"name": "file_read", "arguments": {{"path": "./path/to/file"}}}}]
+- "search code" → [{{"name": "search", "arguments": {{"pattern": "keyword", "path": "."}}}}]
 
-STRICT RULES:
-1. Use get_file_info BEFORE reading any file
-2. NEVER use file_read on files >500 lines - use file_read_range instead
-3. Use list_symbols to find specific functions, then file_read_range
-4. For search: use specific patterns, not broad terms
-5. Call MINIMUM tools needed - each tool costs tokens
+RULES:
+1. Check file size first: get_file_info
+2. Large files (>500 lines): use file_read_range
+3. Find functions: list_symbols then file_read_range
+4. Be specific with searches
 
-EXAMPLE - CORRECT:
-User: "Find login function"
-You: [{{"name": "search", "arguments": {{"pattern": "fn login", "path": "."}}}}]
-System: (returns file paths)
-You: [{{"name": "file_read_range", "arguments": {{"path": "src/auth.rs", "start_line": 45, "end_line": 80}}}}]
-System: (returns code)
-You: "The login function is at src/auth.rs:45-80. It does..."
+WORKFLOW:
+1. User asks question
+2. You return JSON array of tool calls
+3. System executes and returns results
+4. You provide natural language answer
 
-EXAMPLE - WRONG:
-❌ Calling file_read on large files
-❌ Calling get_project_map then list_files (redundant)
-❌ Reading entire files when you need 1 function
-❌ Multiple broad searches
-
-RESPONSE FORMAT:
-- Tool calls: JSON array only
-- Final answer: Natural language with code blocks
-- Be concise - token limit is strict"#,
+IMPORTANT: Always start by calling get_project_map to understand the codebase structure."#,
             tools_json
         )
     }

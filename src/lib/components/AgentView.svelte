@@ -8,6 +8,7 @@
   import { Send, Bot, User, Sparkles, Loader2, Maximize2, Minimize2, Settings, Plus, X, Cpu, Globe, Key, History, Trash2, Download, Search, MessageSquare } from 'lucide-svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
   import ModelSelector from './ModelSelector.svelte';
+  import MCPToolCall from './MCPToolCall.svelte';
   import { cn } from '../utils.js';
 
   // --- STATE MANAGEMENT ---
@@ -21,6 +22,7 @@
   let isLoading = $state(false);
   let streamingContent = $state(''); 
   let streamingReasoning = $state('');
+  let streamingToolCalls = $state([]); // Track tool calls during streaming
   let showReasoning = $state(false);
   
   let messagesContainer;
@@ -55,7 +57,11 @@
     
     const unlistenToolCall = await listen('ai-tool-call', (event) => {
       const toolCall = event.payload;
-      streamingReasoning += `\n🔧 ${toolCall.name}(${JSON.stringify(toolCall.arguments, null, 2)})`;
+      streamingToolCalls = [...streamingToolCalls, { 
+        name: toolCall.name, 
+        arguments: toolCall.arguments,
+        executing: true 
+      }];
     });
 
     const unlistenDone = await listen('ai-stream-done', async () => {
@@ -67,11 +73,13 @@
           role: 'assistant', 
           content: streamingContent, 
           reasoning: streamingReasoning,
+          toolCalls: streamingToolCalls,
           timestamp 
         }];
       }
       streamingContent = '';
       streamingReasoning = '';
+      streamingToolCalls = [];
       isLoading = false;
       scrollToBottom();
     });
@@ -475,6 +483,20 @@ Context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No file op
                 <span class="text-[10px] opacity-50">• {msg.timestamp}</span>
              </div>
              
+             <!-- Show tool calls if exists -->
+             {#if msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0}
+               <div class="mb-2 w-full space-y-1">
+                 {#each msg.toolCalls as toolCall}
+                   <MCPToolCall 
+                     toolName={toolCall.name} 
+                     arguments={toolCall.arguments}
+                     result={toolCall.result}
+                     error={toolCall.error}
+                   />
+                 {/each}
+               </div>
+             {/if}
+             
              <!-- Show reasoning if exists -->
              {#if msg.role === 'assistant' && msg.reasoning}
                <details class="mb-2 w-full">
@@ -509,6 +531,18 @@ Context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No file op
                 <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">
                    Karsa <span class="text-[10px] opacity-50">• Typing...</span>
                 </div>
+                
+                <!-- Tool Calls -->
+                {#if streamingToolCalls.length > 0}
+                  <div class="mb-2 w-full space-y-1">
+                    {#each streamingToolCalls as toolCall}
+                      <MCPToolCall 
+                        toolName={toolCall.name} 
+                        arguments={toolCall.arguments}
+                      />
+                    {/each}
+                  </div>
+                {/if}
                 
                 <!-- Thinking/Reasoning -->
                 {#if streamingReasoning}
