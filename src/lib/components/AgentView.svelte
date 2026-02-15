@@ -189,12 +189,28 @@
     scrollToBottom();
     
     try {
+      // Get MCP system prompt
+      const mcpPrompt = await invoke('mcp_get_system_prompt');
+      
+      // Get system information
+      const systemInfo = `
+====
+
+SYSTEM INFORMATION
+
+Operating System: ${navigator.platform}
+Current Workspace: ${fsStore.activeWorkspace || 'No workspace open'}
+Active File: ${fsStore.activeFile?.name || 'None'}
+
+====
+`;
+      
       const msgs = [
-        { role: 'system', content: "You are Karsa. Use MCP tools." },
-        ...messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
+        { role: 'system', content: mcpPrompt + systemInfo },
+        ...messages.slice(-2).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
       ];
-      await invoke('send_chat_completion_stream', { messages: msgs, config: configStore.settings.ai });
+      await invoke('send_agent_message_stream', { messages: msgs, config: configStore.settings.ai });
     } catch (e) {
       messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp }];
       isLoading = false;
