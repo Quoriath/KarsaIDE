@@ -255,7 +255,8 @@ pub fn mcp_execute(
     state: State<'_, AppState>,
 ) -> MCPResponse {
     let mcp = state.mcp.lock().unwrap();
-    mcp.execute(request)
+    let config = load_config();
+    mcp.execute_with_policy(request, &config.security)
 }
 
 #[command]
@@ -278,6 +279,20 @@ pub fn apply_smart_patch(
 ) -> Result<serde_json::Value, String> {
     crate::mcp::smart_apply_patch(&path, &find, &replace)
         .map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn get_security_settings() -> crate::config_manager::SecuritySettings {
+    load_config().security
+}
+
+#[command]
+pub fn update_security_settings(
+    settings: crate::config_manager::SecuritySettings,
+) -> Result<(), String> {
+    let mut config = load_config();
+    config.security = settings;
+    save_config(&config).map_err(|e| e.to_string())
 }
 
 // Terminal commands

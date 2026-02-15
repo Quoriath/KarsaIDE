@@ -22,6 +22,23 @@ pub struct AIConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecuritySettings {
+    pub auto_execute_shell: bool,
+    pub auto_delete_files: bool,
+    pub auto_move_files: bool,
+}
+
+impl Default for SecuritySettings {
+    fn default() -> Self {
+        Self {
+            auto_execute_shell: false,
+            auto_delete_files: false,
+            auto_move_files: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorConfig {
     pub font_size: u32,
     pub tab_size: u32,
@@ -59,6 +76,7 @@ pub struct KarsaConfig {
     pub editor: EditorConfig,
     pub terminal: TerminalConfig,
     pub session: SessionData,
+    pub security: SecuritySettings,
 }
 
 impl Default for AIConfig {
@@ -114,6 +132,7 @@ impl Default for KarsaConfig {
             editor: EditorConfig::default(),
             terminal: TerminalConfig::default(),
             session: SessionData::default(),
+            security: SecuritySettings::default(),
         }
     }
 }

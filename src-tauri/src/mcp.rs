@@ -51,6 +51,79 @@ pub trait MCPTool {
     fn description(&self) -> &str;
     fn parameters(&self) -> Vec<ToolParameter>;
     fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value>;
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Safe
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ToolCategory {
+    Safe,           // Auto-execute (read, code edits)
+    Destructive,    // Check config (delete, shell)
+}
+
+impl MCPCore {
+    pub fn execute_with_policy(
+        &self,
+        request: MCPRequest,
+        security: &crate::config_manager::SecuritySettings,
+    ) -> MCPResponse {
+        match self.tools.get(&request.tool) {
+            Some(tool) => {
+                let category = tool.category();
+                
+                // Category A: Safe operations - always execute
+                if category == ToolCategory::Safe {
+                    return match tool.execute(request.params) {
+                        Ok(data) => MCPResponse {
+                            success: true,
+                            data: Some(data),
+                            error: None,
+                        },
+                        Err(e) => MCPResponse {
+                            success: false,
+                            data: None,
+                            error: Some(e.to_string()),
+                        },
+                    };
+                }
+                
+                // Category B: Destructive - check config
+                let auto_execute = match request.tool.as_str() {
+                    "file_delete" => security.auto_delete_files,
+                    "file_move" => security.auto_move_files,
+                    "execute_command" => security.auto_execute_shell,
+                    _ => false,
+                };
+                
+                if auto_execute {
+                    match tool.execute(request.params) {
+                        Ok(data) => MCPResponse {
+                            success: true,
+                            data: Some(data),
+                            error: None,
+                        },
+                        Err(e) => MCPResponse {
+                            success: false,
+                            data: None,
+                            error: Some(e.to_string()),
+                        },
+                    }
+                } else {
+                    MCPResponse {
+                        success: false,
+                        data: None,
+                        error: Some("REQUIRES_APPROVAL".to_string()),
+                    }
+                }
+            }
+            None => MCPResponse {
+                success: false,
+                data: None,
+                error: Some(format!("Tool '{}' not found", request.tool)),
+            },
+        }
+    }
 }
 
 impl MCPCore {

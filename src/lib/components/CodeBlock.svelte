@@ -1,32 +1,34 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
-  import { Check, AlertCircle, Loader2 } from 'lucide-svelte';
+  import { Check, Loader2 } from 'lucide-svelte';
+  import { onMount } from 'svelte';
   
-  let { code, language = 'javascript', path, find, replace } = $props();
+  let { code, language = 'javascript', path, find, replace, autoApply = true } = $props();
   
-  let applying = $state(false);
-  let applied = $state(false);
-  let error = $state(null);
+  let status = $state('idle'); // idle, applying, synced
+  
+  onMount(async () => {
+    // Auto-apply for code patches
+    if (autoApply && path && find && replace) {
+      await applyPatch();
+    }
+  });
   
   async function applyPatch() {
-    if (!path || !find || !replace) return;
-    
-    applying = true;
-    error = null;
+    status = 'applying';
     
     try {
-      const result = await invoke('apply_smart_patch', {
+      await invoke('apply_smart_patch', {
         path,
         find,
         replace
       });
       
-      applied = true;
-      setTimeout(() => applied = false, 3000);
+      status = 'synced';
+      setTimeout(() => status = 'idle', 2000);
     } catch (e) {
-      error = e.toString();
-    } finally {
-      applying = false;
+      console.error('Patch failed:', e);
+      status = 'idle';
     }
   }
 </script>
@@ -37,37 +39,20 @@
     {#if path}
       <span class="file-path">{path}</span>
     {/if}
-    {#if find && replace}
-      <button 
-        class="apply-btn"
-        class:applied
-        class:error={error}
-        onclick={applyPatch}
-        disabled={applying || applied}
-      >
-        {#if applying}
-          <Loader2 size={14} class="spin" />
+    {#if status !== 'idle'}
+      <div class="status-indicator" class:synced={status === 'synced'}>
+        {#if status === 'applying'}
+          <Loader2 size={12} class="spin" />
           Applying...
-        {:else if applied}
-          <Check size={14} />
-          Applied
-        {:else if error}
-          <AlertCircle size={14} />
-          Failed
         {:else}
-          Apply Patch
+          <Check size={12} />
+          Synced
         {/if}
-      </button>
+      </div>
     {/if}
   </div>
   
   <pre class="code-content"><code class="language-{language}">{code}</code></pre>
-  
-  {#if error}
-    <div class="error-message">
-      {error}
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -102,37 +87,21 @@
     font-family: monospace;
   }
   
-  .apply-btn {
+  .status-indicator {
     margin-left: auto;
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
+    padding: 0.25rem 0.5rem;
     background: var(--accent);
     color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    animation: fadeIn 0.2s;
   }
   
-  .apply-btn:hover:not(:disabled) {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
-  
-  .apply-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  
-  .apply-btn.applied {
+  .status-indicator.synced {
     background: #10b981;
-  }
-  
-  .apply-btn.error {
-    background: #ef4444;
   }
   
   .code-content {
@@ -143,14 +112,6 @@
     line-height: 1.5;
   }
   
-  .error-message {
-    padding: 0.5rem 0.75rem;
-    background: #ef444420;
-    color: #ef4444;
-    font-size: 0.75rem;
-    border-top: 1px solid var(--border);
-  }
-  
   :global(.spin) {
     animation: spin 1s linear infinite;
   }
@@ -158,5 +119,10 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-2px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 </style>
