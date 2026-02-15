@@ -43,11 +43,12 @@
       configStore.updateLayout({ chatVisible: showChat });
     });
 
+    // Check if config exists and has API key
     try {
-      const configExists = await invoke('file_exists', { path: 'karsa_config.json' });
-      showOnboarding = !configExists;
+      const config = await invoke('get_ai_config');
+      showOnboarding = !config.ai?.api_key;
     } catch (e) {
-      showOnboarding = !localStorage.getItem('karsa_ai_config');
+      showOnboarding = true;
     }
   });
 

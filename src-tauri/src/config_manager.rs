@@ -118,7 +118,7 @@ impl Default for KarsaConfig {
     }
 }
 
-fn get_config_path() -> Result<PathBuf> {
+pub fn get_config_path() -> Result<PathBuf> {
     let config_dir = dirs::config_dir()
         .context("Failed to get config directory")?
         .join("karsa-ide");
@@ -132,10 +132,15 @@ fn get_config_path() -> Result<PathBuf> {
 pub fn load_config() -> KarsaConfig {
     match get_config_path() {
         Ok(path) if path.exists() => {
+            log::info!("Loading config from: {:?}", path);
             fs::read_to_string(&path)
                 .ok()
                 .and_then(|content| serde_json::from_str(&content).ok())
                 .unwrap_or_default()
+        }
+        Ok(path) => {
+            log::info!("Config file not found at: {:?}", path);
+            KarsaConfig::default()
         }
         _ => KarsaConfig::default(),
     }
@@ -147,6 +152,7 @@ pub fn save_config(config: &KarsaConfig) -> Result<()> {
         .context("Failed to serialize config")?;
     fs::write(&path, content)
         .context("Failed to write config")?;
+    log::info!("Config saved to: {:?}", path);
     Ok(())
 }
 

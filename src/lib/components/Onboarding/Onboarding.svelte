@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { Check, Sparkles, Server, Zap, Globe, Key, RefreshCw } from 'lucide-svelte';
   import { cn } from '../../utils.js';
+  import { configStore } from '../../stores/config.svelte.js';
   import ModelSelector from '../ModelSelector.svelte';
 
   let { onComplete } = $props();
@@ -40,12 +41,34 @@
     };
 
     try {
-      await invoke('test_ai_connection', { config }).catch(() => {
-        // Mock success if backend missing
-        return new Promise(resolve => setTimeout(resolve, 1000));
-      });
+      // Save config properly
+      const fullConfig = {
+        ai: {
+          provider: config.provider,
+          api_key: config.api_key,
+          base_url: config.base_url,
+          model_name: config.model_name,
+          custom_models: []
+        },
+        editor: {
+          font_size: 14,
+          tab_size: 2,
+          word_wrap: true,
+          theme: 'dark'
+        },
+        terminal: {},
+        session: {}
+      };
       
-      await invoke('save_ai_config', { config }).catch(() => {});
+      await invoke('save_ai_config', { config: fullConfig });
+      
+      // Also update frontend store
+      configStore.updateAiConfig({
+        provider: config.provider,
+        apiKey: config.api_key,
+        baseUrl: config.base_url,
+        selectedModel: config.model_name
+      });
       
       connectionSuccess = true;
       setTimeout(() => onComplete(), 1500);

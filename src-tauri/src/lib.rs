@@ -32,6 +32,7 @@ pub fn run() {
             copy_path,
             get_ai_config,
             save_ai_config,
+            check_config_exists,
             fetch_kilo_models,
             test_ai_connection,
             send_chat_completion,

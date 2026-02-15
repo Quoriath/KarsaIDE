@@ -42,6 +42,14 @@ pub fn save_ai_config(config: KarsaConfig) -> Result<(), String> {
 }
 
 #[command]
+pub fn check_config_exists() -> bool {
+    match crate::config_manager::get_config_path() {
+        Ok(path) => path.exists(),
+        Err(_) => false,
+    }
+}
+
+#[command]
 pub async fn fetch_kilo_models(api_key: Option<String>, force_refresh: Option<bool>) -> Result<Vec<ModelInfo>, String> {
     let client = AIClient::new();
     client.fetch_kilo_models(api_key, force_refresh.unwrap_or(false)).await
