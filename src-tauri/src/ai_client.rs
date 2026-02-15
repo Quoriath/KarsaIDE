@@ -11,32 +11,32 @@ pub struct ChatMessage {
 }
 
 #[derive(Debug, Serialize)]
-struct ChatRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    stream: bool,
+pub struct ChatRequest {
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+    pub stream: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<Choice>,
+pub struct ChatResponse {
+    pub choices: Vec<Choice>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Choice {
-    message: Option<Message>,
-    delta: Option<Delta>,
+pub struct Choice {
+    pub message: Option<Message>,
+    pub delta: Option<Delta>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Message {
-    content: String,
+pub struct Message {
+    pub content: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct Delta {
-    content: Option<String>,
-    reasoning: Option<String>,
+pub struct Delta {
+    pub content: Option<String>,
+    pub reasoning: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -68,7 +68,7 @@ struct KiloModel {
 }
 
 pub struct AIClient {
-    client: Client,
+    pub client: Client,
 }
 
 impl AIClient {

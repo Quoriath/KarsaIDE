@@ -52,6 +52,11 @@
       const reasoning = typeof event.payload === 'string' ? event.payload : '';
       streamingReasoning += reasoning;
     });
+    
+    const unlistenToolCall = await listen('ai-tool-call', (event) => {
+      const toolCall = event.payload;
+      streamingReasoning += `\n🔧 ${toolCall.name}(${JSON.stringify(toolCall.arguments, null, 2)})`;
+    });
 
     const unlistenDone = await listen('ai-stream-done', async () => {
       // Guard: only save if content exists and not already saved
@@ -81,7 +86,7 @@
       }
     });
 
-    unlistenHandlers.push(unlistenChunk, unlistenReasoning, unlistenDone, unlistenUpdate);
+    unlistenHandlers.push(unlistenChunk, unlistenReasoning, unlistenToolCall, unlistenDone, unlistenUpdate);
   });
 
   onDestroy(() => {
