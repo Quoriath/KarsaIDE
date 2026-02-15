@@ -76,3 +76,50 @@ pub fn delete_path(path: String) -> Result<(), String> {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))
     }
 }
+
+#[command]
+pub fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {}", e))
+}
+
+#[command]
+pub fn create_file(path: String, content: Option<String>) -> Result<(), String> {
+    let content = content.unwrap_or_default();
+    
+    if let Some(parent) = PathBuf::from(&path).parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    
+    fs::write(&path, content).map_err(|e| format!("Failed to create file: {}", e))
+}
+
+#[command]
+pub fn copy_path(source: String, destination: String) -> Result<(), String> {
+    let src = PathBuf::from(&source);
+    let dst = PathBuf::from(&destination);
+    
+    if src.is_dir() {
+        copy_dir_recursive(&src, &dst).map_err(|e| format!("Failed to copy directory: {}", e))
+    } else {
+        fs::copy(&src, &dst).map_err(|e| format!("Failed to copy file: {}", e))?;
+        Ok(())
+    }
+}
+
+fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    
+    Ok(())
+}
