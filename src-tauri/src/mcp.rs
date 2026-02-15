@@ -57,7 +57,12 @@ impl MCPCore {
         core.register_tool(Box::new(FileReadRangeTool));
         core.register_tool(Box::new(ListSymbolsTool));
         core.register_tool(Box::new(FileWriteTool));
+        core.register_tool(Box::new(FileMoveTool));
+        core.register_tool(Box::new(FileCopyTool));
+        core.register_tool(Box::new(FileDeleteTool));
         core.register_tool(Box::new(SearchTool));
+        core.register_tool(Box::new(ListFilesTool));
+        core.register_tool(Box::new(GetFileInfoTool));
         
         core.initialized = true;
         log::info!("MCP Core initialized with {} tools", core.tools.len());
@@ -117,9 +122,10 @@ MANDATORY PROTOCOL - Search-Map-Read:
 3. READ PRECISELY: Use 'file_read_range' for specific lines only
 
 CONTEXT ECONOMY RULES:
-- file_read: MAX 300 lines (will REJECT larger files)
-- file_read_range: MAX 300 lines per call
-- ALWAYS check file size with list_symbols first
+- file_read: MAX 1000 lines (will REJECT larger files)
+- file_read_range: MAX 500 lines per call
+- get_file_info: Check size BEFORE reading
+- ALWAYS check file size with get_file_info or list_symbols first
 - NEVER read entire large files
 - Chain multiple range reads if needed
 
@@ -151,7 +157,7 @@ VIOLATIONS = REJECTION:
 struct FileReadTool;
 impl MCPTool for FileReadTool {
     fn name(&self) -> &str { "file_read" }
-    fn description(&self) -> &str { "Read file contents (max 300 lines, use file_read_range for larger files)" }
+    fn description(&self) -> &str { "Read file contents (max 1000 lines, use file_read_range for larger files)" }
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![ToolParameter {
             name: "path".to_string(),
@@ -165,17 +171,18 @@ impl MCPTool for FileReadTool {
         let content = std::fs::read_to_string(path)?;
         let lines: Vec<&str> = content.lines().collect();
         
-        // Context Economy: Reject large files
-        if lines.len() > 300 {
+        // Context Economy: Reject very large files
+        if lines.len() > 1000 {
             return Err(anyhow::anyhow!(
-                "File too large ({} lines). Use file_read_range(path, start, end) instead. Max 300 lines per read.",
+                "File too large ({} lines). Use file_read_range(path, start, end) instead. Max 1000 lines per read.",
                 lines.len()
             ));
         }
         
         Ok(serde_json::json!({ 
             "content": content,
-            "lines": lines.len()
+            "lines": lines.len(),
+            "size_bytes": content.len()
         }))
     }
 }
@@ -211,15 +218,15 @@ impl MCPTool for FileReadRangeTool {
         let start = params["start_line"].as_u64().ok_or(anyhow::anyhow!("Missing start_line"))? as usize;
         let end = params["end_line"].as_u64().ok_or(anyhow::anyhow!("Missing end_line"))? as usize;
         
-        if end - start > 300 {
-            return Err(anyhow::anyhow!("Range too large. Max 300 lines per read."));
+        if end - start > 500 {
+            return Err(anyhow::anyhow!("Range too large. Max 500 lines per read."));
         }
         
         let content = std::fs::read_to_string(path)?;
         let lines: Vec<&str> = content.lines().collect();
         
         if start < 1 || start > lines.len() || end > lines.len() {
-            return Err(anyhow::anyhow!("Invalid line range"));
+            return Err(anyhow::anyhow!("Invalid line range. File has {} lines", lines.len()));
         }
         
         let range_content = lines[(start-1)..end].join("\n");
@@ -228,6 +235,7 @@ impl MCPTool for FileReadRangeTool {
             "content": range_content,
             "start": start,
             "end": end,
+            "lines_read": end - start + 1,
             "total_lines": lines.len()
         }))
     }
@@ -329,9 +337,165 @@ impl MCPTool for SearchTool {
             .arg(pattern)
             .arg(path)
             .arg("--json")
+            .arg("--max-count=50")
             .output()?;
         
         let results = String::from_utf8_lossy(&output.stdout);
         Ok(serde_json::json!({ "results": results }))
     }
 }
+
+struct FileMoveTool;
+impl MCPTool for FileMoveTool {
+    fn name(&self) -> &str { "file_move" }
+    fn description(&self) -> &str { "Move/rename file" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "from".to_string(),
+                param_type: "string".to_string(),
+                description: "Source path".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "to".to_string(),
+                param_type: "string".to_string(),
+                description: "Destination path".to_string(),
+                required: true,
+            },
+        ]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let from = params["from"].as_str().ok_or(anyhow::anyhow!("Missing from"))?;
+        let to = params["to"].as_str().ok_or(anyhow::anyhow!("Missing to"))?;
+        std::fs::rename(from, to)?;
+        Ok(serde_json::json!({ "success": true, "from": from, "to": to }))
+    }
+}
+
+struct FileCopyTool;
+impl MCPTool for FileCopyTool {
+    fn name(&self) -> &str { "file_copy" }
+    fn description(&self) -> &str { "Copy file" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "from".to_string(),
+                param_type: "string".to_string(),
+                description: "Source path".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "to".to_string(),
+                param_type: "string".to_string(),
+                description: "Destination path".to_string(),
+                required: true,
+            },
+        ]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let from = params["from"].as_str().ok_or(anyhow::anyhow!("Missing from"))?;
+        let to = params["to"].as_str().ok_or(anyhow::anyhow!("Missing to"))?;
+        std::fs::copy(from, to)?;
+        Ok(serde_json::json!({ "success": true, "from": from, "to": to }))
+    }
+}
+
+struct FileDeleteTool;
+impl MCPTool for FileDeleteTool {
+    fn name(&self) -> &str { "file_delete" }
+    fn description(&self) -> &str { "Delete file" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![ToolParameter {
+            name: "path".to_string(),
+            param_type: "string".to_string(),
+            description: "File path".to_string(),
+            required: true,
+        }]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
+        std::fs::remove_file(path)?;
+        Ok(serde_json::json!({ "success": true, "deleted": path }))
+    }
+}
+
+struct ListFilesTool;
+impl MCPTool for ListFilesTool {
+    fn name(&self) -> &str { "list_files" }
+    fn description(&self) -> &str { "List files in directory" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "path".to_string(),
+                param_type: "string".to_string(),
+                description: "Directory path".to_string(),
+                required: true,
+            },
+            ToolParameter {
+                name: "recursive".to_string(),
+                param_type: "boolean".to_string(),
+                description: "Recursive listing".to_string(),
+                required: false,
+            },
+        ]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
+        let recursive = params["recursive"].as_bool().unwrap_or(false);
+        
+        let mut files = Vec::new();
+        
+        if recursive {
+            for entry in walkdir::WalkDir::new(path).max_depth(5) {
+                if let Ok(entry) = entry {
+                    if entry.file_type().is_file() {
+                        files.push(entry.path().display().to_string());
+                    }
+                }
+            }
+        } else {
+            for entry in std::fs::read_dir(path)? {
+                if let Ok(entry) = entry {
+                    files.push(entry.path().display().to_string());
+                }
+            }
+        }
+        
+        Ok(serde_json::json!({ "files": files, "count": files.len() }))
+    }
+}
+
+struct GetFileInfoTool;
+impl MCPTool for GetFileInfoTool {
+    fn name(&self) -> &str { "get_file_info" }
+    fn description(&self) -> &str { "Get file metadata (size, lines, type)" }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![ToolParameter {
+            name: "path".to_string(),
+            param_type: "string".to_string(),
+            description: "File path".to_string(),
+            required: true,
+        }]
+    }
+    fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let path = params["path"].as_str().ok_or(anyhow::anyhow!("Missing path"))?;
+        let metadata = std::fs::metadata(path)?;
+        
+        let lines = if metadata.is_file() {
+            std::fs::read_to_string(path)?.lines().count()
+        } else {
+            0
+        };
+        
+        Ok(serde_json::json!({
+            "path": path,
+            "size_bytes": metadata.len(),
+            "lines": lines,
+            "is_file": metadata.is_file(),
+            "is_dir": metadata.is_dir(),
+            "readonly": metadata.permissions().readonly()
+        }))
+    }
+}
+
