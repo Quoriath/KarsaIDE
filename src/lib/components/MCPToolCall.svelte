@@ -1,7 +1,7 @@
 <script>
-  import { FileText, Search, List, Code, File, FolderOpen } from 'lucide-svelte';
+  import { FileText, Search, List, Code, File, FolderOpen, Loader2 } from 'lucide-svelte';
   
-  let { toolName, arguments: args, result, error } = $props();
+  let { toolName, arguments: args, result, error, executing = false } = $props();
   
   const toolIcons = {
     file_read: FileText,
@@ -33,11 +33,18 @@
 <div class="mcp-tool-call border border-border/50 rounded-lg p-3 my-2 bg-muted/10">
   <div class="flex items-start gap-2">
     <div class="mt-0.5 text-primary">
-      <Icon size={16} />
+      {#if executing}
+        <Loader2 size={16} class="animate-spin" />
+      {:else}
+        <Icon size={16} />
+      {/if}
     </div>
     <div class="flex-1 min-w-0">
-      <div class="font-mono text-xs font-medium text-foreground">
+      <div class="font-mono text-xs font-medium text-foreground flex items-center gap-2">
         {toolName}
+        {#if executing}
+          <span class="text-[10px] text-muted-foreground animate-pulse">executing...</span>
+        {/if}
       </div>
       {#if formatArgs(args)}
         <div class="text-xs text-muted-foreground mt-1 font-mono">
@@ -52,7 +59,7 @@
       {:else if result}
         <details class="mt-2">
           <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-            📄 Result ({typeof result === 'string' ? result.length : JSON.stringify(result).length} chars)
+            ✅ Result ({typeof result === 'string' ? result.length : JSON.stringify(result).length} chars)
           </summary>
           <pre class="mt-2 text-xs bg-background/50 rounded p-2 overflow-x-auto border border-border/30">{truncateResult(result, 500)}</pre>
         </details>

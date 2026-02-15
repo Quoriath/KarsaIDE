@@ -196,6 +196,7 @@ pub async fn send_agent_message_stream(
 
         let mut stream = response.bytes_stream();
         let mut accumulated = String::new();
+        let mut has_tool_calls = false;
         
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| format!("Stream error: {}", e))?;
@@ -219,7 +220,7 @@ pub async fn send_agent_message_stream(
                                 if let Some(content) = &delta.content {
                                     if !content.is_empty() {
                                         accumulated.push_str(content);
-                                        let _ = app.emit("ai-stream-chunk", content.clone());
+                                        // Don't emit yet - check for tool calls first
                                     }
                                 }
                             }
@@ -229,15 +230,28 @@ pub async fn send_agent_message_stream(
             }
         }
         
+        // Check for tool calls BEFORE emitting content
+        has_tool_calls = extract_tool_calls(&accumulated).is_some();
+        
+        // Only emit content if NO tool calls (final answer)
+        if !has_tool_calls {
+            // Emit accumulated content as stream
+            for chunk in accumulated.chars().collect::<Vec<_>>().chunks(50) {
+                let text: String = chunk.iter().collect();
+                let _ = app.emit("ai-stream-chunk", text);
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            }
+        }
+        
         // Check for tool calls in accumulated response
         if let Some(tool_calls) = extract_tool_calls(&accumulated) {
-            let _ = app.emit("ai-stream-chunk", "\n\n".to_string());
+            // Don't show JSON - just execute tools
             
             for tool_call in tool_calls {
                 let tool_name = tool_call.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let arguments = tool_call.get("arguments").cloned().unwrap_or(serde_json::json!({}));
                 
-                // Show nice tool execution UI
+                // Emit tool call event (for UI display)
                 let _ = app.emit("ai-tool-call", serde_json::json!({
                     "name": tool_name,
                     "arguments": arguments
@@ -258,10 +272,21 @@ pub async fn send_agent_message_stream(
                         } else {
                             result_str
                         };
+                        
+                        // Emit tool result event
+                        let _ = app.emit("ai-tool-result", serde_json::json!({
+                            "name": tool_name,
+                            "result": truncated.clone()
+                        }));
+                        
                         format!("Tool '{}' result:\n{}", tool_name, truncated)
                     } else {
-                        format!("Tool '{}' error: {}", tool_name, 
-                            response.error.unwrap_or_default())
+                        let error = response.error.unwrap_or_default();
+                        let _ = app.emit("ai-tool-result", serde_json::json!({
+                            "name": tool_name,
+                            "error": error.clone()
+                        }));
+                        format!("Tool '{}' error: {}", tool_name, error)
                     }
                 };
                 

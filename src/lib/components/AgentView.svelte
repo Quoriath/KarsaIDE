@@ -55,14 +55,31 @@
       scrollToBottom();
     });
 
-    const unlistenToolCall = await listen('mcp-tool-call', (event) => {
-      activeToolCall = { ...event.payload, status: 'pending' };
+    const unlistenToolCall = await listen('ai-tool-call', (event) => {
+      const toolCall = event.payload;
+      streamingToolCalls = [...streamingToolCalls, { 
+        name: toolCall.name, 
+        arguments: toolCall.arguments,
+        executing: true 
+      }];
       scrollToBottom();
     });
 
-    const unlistenToolResult = await listen('mcp-tool-result', (event) => {
-      if (activeToolCall && activeToolCall.id === event.payload.id) {
-        completedTools = [...completedTools, { 
+    const unlistenToolResult = await listen('ai-tool-result', (event) => {
+      const result = event.payload;
+      // Update last tool call with result
+      if (streamingToolCalls.length > 0) {
+        const lastIndex = streamingToolCalls.length - 1;
+        streamingToolCalls[lastIndex] = {
+          ...streamingToolCalls[lastIndex],
+          executing: false,
+          result: result.result,
+          error: result.error
+        };
+        streamingToolCalls = [...streamingToolCalls]; // Trigger reactivity
+      }
+      scrollToBottom();
+    }); 
           ...activeToolCall, 
           result: event.payload.result, 
           status: event.payload.isError ? 'error' : 'success',
@@ -321,22 +338,35 @@ Active File: ${fsStore.activeFile?.name || 'None'}
        {/each}
 
        <!-- Streaming Block -->
-       {#if isLoading || streamingContent || streamingReasoning || activeToolCall}
+       {#if isLoading || streamingContent || streamingReasoning || streamingToolCalls.length > 0}
           <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0"><Bot size={18} class="text-muted-foreground" /></div>
              <div class="flex flex-col max-w-[85%] items-start w-full">
                 <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">Karsa <span class="text-[10px] opacity-50">• Typing...</span></div>
                 
                 {#if streamingReasoning}
-                  <ThinkingBlock content={streamingReasoning} isStreaming={true} />
+                  <details open class="mb-2 w-full">
+                    <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-2 py-1 px-2 rounded bg-muted/30">
+                      <span class="text-[10px]">💭</span> Thinking...
+                    </summary>
+                    <div class="mt-2 text-xs text-muted-foreground bg-muted/20 rounded p-3 border border-border/50 whitespace-pre-wrap">
+                      {streamingReasoning}
+                    </div>
+                  </details>
                 {/if}
 
-                {#each completedTools as tool}
-                   <ToolExecution toolName={tool.name} args={tool.args} result={tool.result} status={tool.status} error={tool.error} />
-                {/each}
-
-                {#if activeToolCall}
-                   <ToolExecution toolName={activeToolCall.name} args={activeToolCall.args} status="pending" />
+                {#if streamingToolCalls.length > 0}
+                  <div class="w-full space-y-1 mb-2">
+                    {#each streamingToolCalls as toolCall}
+                      <MCPToolCall 
+                        toolName={toolCall.name} 
+                        arguments={toolCall.arguments}
+                        result={toolCall.result}
+                        error={toolCall.error}
+                        executing={toolCall.executing}
+                      />
+                    {/each}
+                  </div>
                 {/if}
                 
                 {#if streamingContent}
