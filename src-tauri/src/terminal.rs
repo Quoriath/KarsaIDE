@@ -1,5 +1,5 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use anyhow::Result;
@@ -33,16 +33,15 @@ impl Terminal {
         let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
         let writer_clone = writer.clone();
 
-        // Spawn reader thread with buffering
+        // Spawn reader thread with immediate output
         std::thread::spawn(move || {
-            let mut reader = BufReader::with_capacity(8192, reader);
-            let mut buffer = Vec::with_capacity(4096);
+            let mut reader = reader;
+            let mut buffer = [0u8; 1024];
             loop {
-                buffer.clear();
-                match reader.read_until(b'\n', &mut buffer) {
+                match reader.read(&mut buffer) {
                     Ok(0) => break,
-                    Ok(_) => {
-                        let _ = app.emit("terminal-output", buffer.clone());
+                    Ok(n) => {
+                        let _ = app.emit("terminal-output", buffer[..n].to_vec());
                     }
                     Err(_) => break,
                 }

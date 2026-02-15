@@ -133,11 +133,11 @@
     activeConversationId = id;
     try {
       const msgs = await invoke('get_messages', { conversationId: id });
-      // Map DB fields to UI fields if necessary
+      // Parse Unix timestamp (seconds) to Date
       messages = msgs.map(m => ({
         role: m.role,
         content: m.content,
-        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date(m.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }));
       input = '';
       streamingContent = '';
@@ -186,7 +186,7 @@
       const now = new Date();
       
       conversations.forEach(session => {
-        const d = new Date(session.updated_at || session.created_at); // Use DB timestamp
+        const d = new Date((session.updated_at || session.created_at) * 1000); // Unix timestamp to ms
         const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
         
         if (diffDays === 0) groups['Today'].push(session);
@@ -366,7 +366,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
               </div>
               <div class="flex-1 min-w-0">
                  <div class="truncate font-medium">{session.title}</div>
-                 <div class="text-[10px] opacity-60 mt-0.5 truncate">{new Date(session.updated_at || session.created_at).toLocaleDateString()}</div>
+                 <div class="text-[10px] opacity-60 mt-0.5 truncate">{new Date((session.updated_at || session.created_at) * 1000).toLocaleDateString()}</div>
               </div>
               
               <!-- Delete Button -->

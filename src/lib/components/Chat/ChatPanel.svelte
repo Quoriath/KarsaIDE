@@ -109,7 +109,7 @@ Focus on accuracy over speed. Quality over quantity.`;
       messages = msgs.map(m => ({
         role: m.role,
         content: m.content,
-        timestamp: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date(m.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }));
       await tick();
       scrollToBottom();
@@ -370,7 +370,7 @@ Focus on accuracy over speed. Quality over quantity.`;
                   </span>
                 {/if}
               </div>
-              <div class="text-[10px] opacity-70">{new Date(conv.updated_at).toLocaleDateString()}</div>
+              <div class="text-[10px] opacity-70">{new Date(conv.updated_at * 1000).toLocaleDateString()}</div>
             </div>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
