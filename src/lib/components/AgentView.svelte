@@ -250,48 +250,16 @@
       // Get MCP system prompt
       const mcpPrompt = await invoke('mcp_get_system_prompt');
       
-      const systemPrompt = `You are Karsa, an AI coding assistant with direct access to the codebase through MCP (Model Context Protocol) tools.
-
-AVAILABLE TOOLS (use these to answer questions):
-1. get_project_map() - See the entire project structure (folders & files)
-2. query_codebase(query) - Search for specific files or code
-3. get_codebase_stats() - Get project statistics (languages, file count, lines)
-4. file_read(path) - Read file contents (max 1000 lines)
-5. file_read_range(path, start, end) - Read specific lines (max 500 lines)
-6. list_symbols(path) - List functions/classes in a file
-7. search(pattern, path) - Search for text patterns
-
-WORKFLOW:
-1. When asked about project structure → use get_project_map()
-2. When asked about specific files → use query_codebase() or search()
-3. Before reading files → use get_file_info() to check size
-4. For large files → use list_symbols() first, then file_read_range()
-
-CORE RULES:
-- ALWAYS use tools to verify information about the codebase
-- Never guess about project structure - use get_project_map()
-- Cite actual file paths and line numbers
-- If uncertain, use tools to check
-- Be direct and concise
-
-RESPONSE STYLE:
-- Start with direct answer
-- Provide code blocks for implementations
-- Use \`\`\`language for syntax highlighting
-- Keep explanations minimal
-
-ERROR HANDLING:
-- If task is ambiguous, ask specific questions
-- If approach has risks, warn before suggesting
-- If multiple solutions exist, present trade-offs briefly
+      const systemPrompt = `You are Karsa, an AI coding assistant with MCP tools.
 
 ${mcpPrompt}
 
-Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No file open'}`;
+Context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No file open'}`;
 
       const msgs = [
         { role: 'system', content: systemPrompt },
-        ...messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
+        // CRITICAL: Only last 2 messages to prevent token overflow
+        ...messages.slice(-2).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage }
       ];
 

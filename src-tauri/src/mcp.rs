@@ -196,53 +196,44 @@ impl MCPCore {
             r#"AVAILABLE MCP TOOLS:
 {}
 
+⚠️ CRITICAL TOKEN LIMITS ⚠️
+- MAX 5 tool calls per conversation
+- Tool results truncated to 2000 chars
+- Only last 3 messages kept in context
+- MUST use targeted, specific tool calls
+
 HOW TO USE TOOLS:
-When you need information from the codebase, respond with a JSON array of tool calls:
+Respond with JSON array ONLY when you need data:
 
-[
-  {{
-    "name": "tool_name",
-    "arguments": {{
-      "param1": "value1"
-    }}
-  }}
-]
+[{{"name": "tool_name", "arguments": {{"param": "value"}}}}]
 
-After tool execution, you'll receive results. Then provide your final answer.
+After receiving tool results, provide your FINAL answer.
 
-EXAMPLE WORKFLOW:
-User: "Show me the project structure"
-You: [
-  {{
-    "name": "get_project_map",
-    "arguments": {{}}
-  }}
-]
-System: (tool results)
-You: "Here's your project structure: ..."
+STRICT RULES:
+1. Use get_file_info BEFORE reading any file
+2. NEVER use file_read on files >500 lines - use file_read_range instead
+3. Use list_symbols to find specific functions, then file_read_range
+4. For search: use specific patterns, not broad terms
+5. Call MINIMUM tools needed - each tool costs tokens
 
-TOOL USAGE PROTOCOL:
-1. SEARCH FIRST: Use 'search' to find relevant files
-2. MAP STRUCTURE: Use 'list_symbols' to see functions/classes
-3. READ PRECISELY: Use 'file_read_range' for specific lines
+EXAMPLE - CORRECT:
+User: "Find login function"
+You: [{{"name": "search", "arguments": {{"pattern": "fn login", "path": "."}}}}]
+System: (returns file paths)
+You: [{{"name": "file_read_range", "arguments": {{"path": "src/auth.rs", "start_line": 45, "end_line": 80}}}}]
+System: (returns code)
+You: "The login function is at src/auth.rs:45-80. It does..."
 
-CONTEXT LIMITS:
-- file_read: MAX 1000 lines
-- file_read_range: MAX 500 lines per call
-- ALWAYS check file size with get_file_info first
-- Use list_symbols before reading large files
+EXAMPLE - WRONG:
+❌ Calling file_read on large files
+❌ Calling get_project_map then list_files (redundant)
+❌ Reading entire files when you need 1 function
+❌ Multiple broad searches
 
-RESPONSE RULES:
-- Use tools to verify information
-- Cite file paths and line numbers
-- Be direct and concise
-- If you need multiple tools, call them in one array
-- After getting tool results, provide natural language answer
-
-NEVER:
-- Guess about code without using tools
-- Read entire large files without checking size
-- Return only JSON without final answer"#,
+RESPONSE FORMAT:
+- Tool calls: JSON array only
+- Final answer: Natural language with code blocks
+- Be concise - token limit is strict"#,
             tools_json
         )
     }

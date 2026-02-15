@@ -158,9 +158,11 @@ pub async fn send_agent_message_stream(
     config: AIConfig,
 ) -> Result<(), String> {
     let client = AIClient::new();
-    let max_iterations = 10;
+    let max_iterations = 5; // Reduce from 10
     let mut iteration = 0;
-    let mut conversation = messages;
+    
+    // CRITICAL: Only keep last 2 messages + system prompt to avoid token overflow
+    let mut conversation: Vec<crate::ai_client::ChatMessage> = messages.into_iter().rev().take(3).rev().collect();
     
     loop {
         iteration += 1;
@@ -195,8 +197,14 @@ pub async fn send_agent_message_stream(
                     let response = mcp.execute(request);
                     
                     if response.success {
-                        format!("Tool '{}' result:\n{}", tool_name, 
-                            serde_json::to_string_pretty(&response.data).unwrap_or_default())
+                        let result_str = serde_json::to_string_pretty(&response.data).unwrap_or_default();
+                        // CRITICAL: Truncate to 2000 chars to prevent token overflow
+                        let truncated = if result_str.len() > 2000 {
+                            format!("{}...\n[Truncated - {} total chars]", &result_str[..2000], result_str.len())
+                        } else {
+                            result_str
+                        };
+                        format!("Tool '{}' result:\n{}", tool_name, truncated)
                     } else {
                         format!("Tool '{}' error: {}", tool_name, 
                             response.error.unwrap_or_default())
@@ -208,6 +216,17 @@ pub async fn send_agent_message_stream(
                     role: "user".to_string(),
                     content: result,
                 });
+            }
+            
+            // CRITICAL: Keep only last 3 messages to prevent token overflow
+            if conversation.len() > 3 {
+                let system_msg = conversation.first().cloned();
+                conversation = conversation.into_iter().rev().take(2).rev().collect();
+                if let Some(sys) = system_msg {
+                    if sys.role == "system" {
+                        conversation.insert(0, sys);
+                    }
+                }
             }
             
             // Continue loop to get next response
