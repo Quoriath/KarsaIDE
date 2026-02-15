@@ -291,7 +291,6 @@ impl AIClient {
                                         let _ = app.emit("ai-stream-chunk", content.clone());
                                     }
                                 }
-                                }
                             }
                         }
                     }
