@@ -38,17 +38,35 @@
 
   async function openFolder() {
     try {
-      const selected = await open({ directory: true, multiple: false });
+      console.log('Opening folder dialog...');
+      const selected = await open({ 
+        directory: true, 
+        multiple: false,
+        title: 'Select Project Folder'
+      });
+      
+      console.log('Selected:', selected);
+      
       if (selected) {
+        console.log('Setting workspace:', selected);
         // Set as active workspace
         await invoke('set_active_workspace', { path: selected });
+        
+        console.log('Scanning workspace...');
         // Scan workspace
         const tree = await invoke('scan_workspace', { path: selected, depth: 5 });
+        
+        console.log('Tree:', tree);
         fsStore.setProjectDir(selected);
         fsStore.setFileTree(tree);
+        
+        console.log('Workspace opened successfully');
+      } else {
+        console.log('No folder selected (user cancelled)');
       }
     } catch (err) { 
-      console.error('Failed to open folder:', err); 
+      console.error('Failed to open folder:', err);
+      alert(`Error opening folder: ${err}`);
     }
   }
 
