@@ -1,11 +1,12 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { fsStore } from '../../stores/fileSystem.svelte.js';
   import { configStore } from '../../stores/config.svelte.js';
   import { tick, onMount } from 'svelte';
   import { 
     Send, X, Bot, User, Sparkles, FileCode, Loader2, Eraser, 
-    Settings, Download, Upload, Sliders, Plus 
+    Settings, Download, Upload, Sliders, Plus, MessageSquare, Trash2
   } from 'lucide-svelte';
   import MarkdownRenderer from '../MarkdownRenderer.svelte';
   import ModelSelector from '../ModelSelector.svelte';
@@ -13,10 +14,13 @@
 
   let { onClose } = $props();
 
+  let conversations = $state([]);
+  let activeConversationId = $state(null);
   let messages = $state([]);
   let input = $state('');
   let isLoading = $state(false);
   let showSettings = $state(false);
+  let showHistory = $state(false);
   let messagesContainer;
   let textarea;
   
@@ -27,15 +31,95 @@
 
   const SYSTEM_PROMPT = "You are Karsa, an autonomous coding agent. You have access to the user's open file. Answer concisely and provide code blocks when relevant. Use markdown.";
 
-  onMount(() => {
-    const saved = localStorage.getItem('karsa-sidebar-chat');
-    if (saved) {
-      try { messages = JSON.parse(saved); } catch (e) {}
-    }
+  onMount(async () => {
+    await loadConversations();
+    
+    // Listen for new messages from streaming
+    await listen('chat-message', (event) => {
+      const { content } = event.payload;
+      if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+        messages[messages.length - 1].content += content;
+      }
+    });
   });
 
-  function saveHistory() {
-    localStorage.setItem('karsa-sidebar-chat', JSON.stringify(messages.slice(-50)));
+  async function loadConversations() {
+    try {
+      conversations = await invoke('get_conversations', {
+        mode: 'editor',
+        limit: 50
+      });
+      
+      // Load last conversation
+      if (conversations.length > 0 && !activeConversationId) {
+        await loadConversation(conversations[0].id);
+      }
+    } catch (e) {
+      console.error('Failed to load conversations:', e);
+    }
+  }
+
+  async function loadConversation(id) {
+    try {
+      activeConversationId = id;
+      const msgs = await invoke('get_messages', { conversationId: id });
+      messages = msgs.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }));
+      await tick();
+      scrollToBottom();
+    } catch (e) {
+      console.error('Failed to load messages:', e);
+    }
+  }
+
+  async function createNewConversation() {
+    try {
+      const title = `Chat ${new Date().toLocaleDateString()}`;
+      const id = await invoke('create_conversation', {
+        mode: 'editor',
+        title,
+        contextPath: fsStore.activeFile?.path || null,
+        model: selectedModel
+      });
+      
+      activeConversationId = id;
+      messages = [];
+      await loadConversations();
+    } catch (e) {
+      console.error('Failed to create conversation:', e);
+    }
+  }
+
+  async function deleteConversation(id) {
+    try {
+      await invoke('delete_conversation', { id });
+      if (activeConversationId === id) {
+        activeConversationId = null;
+        messages = [];
+      }
+      await loadConversations();
+    } catch (e) {
+      console.error('Failed to delete conversation:', e);
+    }
+  }
+
+  async function saveMessage(role, content) {
+    if (!activeConversationId) {
+      await createNewConversation();
+    }
+    
+    try {
+      await invoke('add_message', {
+        conversationId: activeConversationId,
+        role,
+        content
+      });
+    } catch (e) {
+      console.error('Failed to save message:', e);
+    }
   }
 
   async function sendMessage() {
@@ -49,6 +133,10 @@
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     messages = [...messages, { role: 'user', content: userMessage, timestamp }];
+    
+    // Save to database
+    await saveMessage('user', userMessage);
+    
     await tick();
     scrollToBottom();
 
@@ -76,7 +164,9 @@
 
       const aiTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       messages = [...messages, { role: 'assistant', content: response, timestamp: aiTimestamp }];
-      saveHistory();
+      
+      // Save to database
+      await saveMessage('assistant', response);
     } catch (e) {
       const errTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp: errTimestamp }];
@@ -105,32 +195,6 @@
     target.style.height = 'auto';
     target.style.height = `${Math.min(target.scrollHeight, 150)}px`;
   }
-
-  function exportChat() {
-    const data = JSON.stringify(messages, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `karsa-sidebar-chat-${Date.now()}.json`;
-    a.click();
-  }
-
-  function importChat(event) {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          messages = JSON.parse(e.target.result);
-          saveHistory();
-        } catch (err) {
-          console.error(err);
-        }
-      };
-      reader.readAsText(file);
-    }
-  }
 </script>
 
 <div class="h-full flex flex-col bg-background border-l border-border">
@@ -142,18 +206,26 @@
     </div>
     
     <div class="flex items-center gap-1">
-      <button class={cn("p-1 hover:bg-muted rounded transition-colors", showSettings ? "text-primary bg-primary/10" : "text-muted-foreground")} title="Settings" onclick={() => showSettings = !showSettings}>
+      <button 
+        class={cn("p-1 hover:bg-muted rounded transition-colors", showHistory ? "text-primary bg-primary/10" : "text-muted-foreground")} 
+        title="History" 
+        onclick={() => showHistory = !showHistory}
+      >
+        <MessageSquare size={14} />
+      </button>
+      <button 
+        class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors" 
+        title="New Chat" 
+        onclick={createNewConversation}
+      >
+        <Plus size={14} />
+      </button>
+      <button 
+        class={cn("p-1 hover:bg-muted rounded transition-colors", showSettings ? "text-primary bg-primary/10" : "text-muted-foreground")} 
+        title="Settings" 
+        onclick={() => showSettings = !showSettings}
+      >
         <Sliders size={14} />
-      </button>
-      <label class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Import Chat">
-        <Upload size={14} />
-        <input type="file" accept=".json" onchange={importChat} class="hidden" />
-      </label>
-      <button class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors" title="Export Chat" onclick={exportChat}>
-        <Download size={14} />
-      </button>
-      <button class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors" title="Clear Chat" onclick={() => { messages = []; saveHistory(); }}>
-        <Eraser size={14} />
       </button>
       <div class="w-[1px] h-3 bg-border mx-1"></div>
       <button onclick={onClose} class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors">
@@ -161,6 +233,45 @@
       </button>
     </div>
   </div>
+
+  <!-- History Sidebar -->
+  {#if showHistory}
+    <div class="border-b border-border bg-muted/5 max-h-64 overflow-y-auto">
+      <div class="p-2 space-y-1">
+        {#each conversations as conv}
+          <button
+            class={cn(
+              "w-full text-left px-3 py-2 rounded text-xs transition-colors flex items-center justify-between group",
+              activeConversationId === conv.id 
+                ? "bg-primary/10 text-primary" 
+                : "hover:bg-muted text-muted-foreground"
+            )}
+            onclick={() => loadConversation(conv.id)}
+          >
+            <div class="flex-1 truncate">
+              <div class="font-medium truncate">{conv.title}</div>
+              <div class="text-[10px] opacity-70">{new Date(conv.updated_at).toLocaleDateString()}</div>
+            </div>
+            <button
+              class="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded"
+              onclick={(e) => {
+                e.stopPropagation();
+                deleteConversation(conv.id);
+              }}
+            >
+              <Trash2 size={12} class="text-destructive" />
+            </button>
+          </button>
+        {/each}
+        
+        {#if conversations.length === 0}
+          <div class="text-center py-4 text-xs text-muted-foreground">
+            No conversations yet
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <!-- Settings Panel (Collapsible) -->
   {#if showSettings}
@@ -179,7 +290,6 @@
              </div>
              <input type="range" min="0" max="1" step="0.1" bind:value={temperature} class="w-full h-1.5 bg-muted rounded-full accent-primary appearance-none cursor-pointer" />
           </div>
-          
           <div class="space-y-1">
              <div class="flex justify-between text-[10px] text-muted-foreground">
                 <span>Max Tokens</span>
