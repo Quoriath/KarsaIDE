@@ -510,7 +510,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
        {/each}
 
        <!-- Streaming Response -->
-       {#if isLoading || streamingContent}
+       {#if (isLoading && !streamingContent) || streamingContent}
           <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0">
                <Bot size={18} class="text-muted-foreground" />
