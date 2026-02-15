@@ -54,6 +54,7 @@ impl Cache {
         Ok(())
     }
     
+    #[allow(dead_code)]
     pub fn clear_models() -> Result<()> {
         let path = Self::get_cache_path()?;
         if path.exists() {

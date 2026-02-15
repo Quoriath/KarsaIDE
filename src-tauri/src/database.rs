@@ -197,6 +197,7 @@ impl Database {
     }
     
     // Batch operations for efficiency
+    #[allow(dead_code)]
     pub fn add_messages_batch(&self, conversation_id: i64, messages: Vec<(&str, &str)>) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         let now = chrono::Utc::now().timestamp();

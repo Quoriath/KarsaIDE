@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::Arc;
-use parking_lot::Mutex;
-use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCPRequest {
@@ -34,6 +31,7 @@ pub struct ToolParameter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PatchRequest {
     pub path: String,
     pub find: String,
@@ -43,7 +41,6 @@ pub struct PatchRequest {
 pub struct MCPCore {
     tools: HashMap<String, Box<dyn MCPTool + Send + Sync>>,
     initialized: bool,
-    app_handle: Option<Arc<AppHandle>>,
 }
 
 pub trait MCPTool {
@@ -57,6 +54,7 @@ pub trait MCPTool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 pub enum ToolCategory {
     Safe,           // Auto-execute (read, code edits)
     Destructive,    // Check config (delete, shell)
@@ -132,7 +130,6 @@ impl MCPCore {
         let mut core = Self {
             tools: HashMap::new(),
             initialized: false,
-            app_handle: None,
         };
         
         // Register built-in tools (fast, no I/O)
@@ -158,6 +155,7 @@ impl MCPCore {
         self.tools.insert(tool.name().to_string(), tool);
     }
     
+    #[allow(dead_code)]
     pub fn execute(&self, request: MCPRequest) -> MCPResponse {
         match self.tools.get(&request.tool) {
             Some(tool) => match tool.execute(request.params) {

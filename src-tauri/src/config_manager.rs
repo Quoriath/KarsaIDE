@@ -175,6 +175,7 @@ pub fn save_config(config: &KarsaConfig) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn config_exists() -> bool {
     get_config_path()
         .map(|p| p.exists())
