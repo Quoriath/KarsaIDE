@@ -29,6 +29,33 @@
   let activeMode = $state('editor'); 
   let showTerminal = $state(configStore.settings.layout.bottomPanelVisible);
   let showSettings = $state(false);
+  let terminalHeight = $state(configStore.settings.layout.bottomPanelHeight || 250);
+  let isResizingTerminal = $state(false);
+
+  function startTerminalResize(e) {
+    isResizingTerminal = true;
+    document.body.classList.add('resizing-terminal');
+    const startY = e.clientY;
+    const startHeight = terminalHeight;
+    
+    function onMouseMove(e) {
+      if (!isResizingTerminal) return;
+      const delta = startY - e.clientY;
+      const newHeight = Math.max(100, Math.min(window.innerHeight * 0.8, startHeight + delta));
+      terminalHeight = newHeight;
+    }
+    
+    function onMouseUp() {
+      isResizingTerminal = false;
+      document.body.classList.remove('resizing-terminal');
+      configStore.updateLayout({ bottomPanelHeight: terminalHeight });
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    }
+    
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
 
   onMount(async () => {
     themeStore.applyTheme(configStore.settings.theme || 'karsa-dark');
@@ -138,11 +165,14 @@
                {/if}
              </div>
 
-             <!-- Lower Part (Terminal) -->
+             <!-- Lower Part (Terminal) - Resizable -->
              {#if showTerminal}
-               <div class="shrink-0 z-20">
-                  <div class="h-[1px] bg-border hover:bg-primary/50 cursor-row-resize transition-colors"></div>
-                  <div class="h-[200px] min-h-[100px] max-h-[80vh] bg-background border-t border-border flex flex-col">
+               <div class="shrink-0 z-20 terminal-panel" style="height: {terminalHeight}px">
+                  <div 
+                    class="h-[4px] bg-border hover:bg-primary/50 cursor-row-resize transition-colors active:bg-primary"
+                    onmousedown={startTerminalResize}
+                  ></div>
+                  <div class="h-full bg-background border-t border-border flex flex-col overflow-hidden">
                       <Terminal onClose={toggleTerminal} />
                   </div>
                </div>
@@ -193,3 +223,20 @@
     <Settings onClose={() => showSettings = false} />
   {/if}
 </main>
+
+<style>
+  :global(body) {
+    user-select: none;
+  }
+  
+  :global(body.resizing-terminal) {
+    cursor: row-resize !important;
+    user-select: none !important;
+  }
+  
+  :global(body.resizing-terminal *) {
+    cursor: row-resize !important;
+    pointer-events: none !important;
+  }
+</style>
+
