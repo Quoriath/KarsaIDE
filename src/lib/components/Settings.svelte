@@ -1,9 +1,12 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
   import { configStore } from '../stores/config.svelte.js';
-  import { X, Save, RefreshCw } from 'lucide-svelte';
+  import { X, Save, RefreshCw, Settings as SettingsIcon, Brain } from 'lucide-svelte';
+  import IntelligenceTab from './IntelligenceTab.svelte';
 
   let { onClose } = $props();
+  
+  let activeTab = $state('general');
 
   let provider = $state(configStore.settings.ai.provider);
   let apiKey = $state(configStore.settings.ai.apiKey);
@@ -58,7 +61,26 @@
       </button>
     </div>
 
+    <!-- Tabs -->
+    <div class="flex border-b border-border">
+      <button
+        class="px-4 py-2 text-sm flex items-center gap-2 {activeTab === 'general' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}"
+        onclick={() => activeTab = 'general'}
+      >
+        <SettingsIcon size={14} />
+        General
+      </button>
+      <button
+        class="px-4 py-2 text-sm flex items-center gap-2 {activeTab === 'intelligence' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}"
+        onclick={() => activeTab = 'intelligence'}
+      >
+        <Brain size={14} />
+        Intelligence
+      </button>
+    </div>
+
     <div class="settings-content">
+      {#if activeTab === 'general'}
       <section>
         <h3>AI Provider</h3>
         
@@ -111,7 +133,12 @@
         </label>
       </section>
     </div>
+    {:else if activeTab === 'intelligence'}
+      <IntelligenceTab />
+    {/if}
+    </div>
 
+    {#if activeTab === 'general'}
     <div class="settings-footer">
       <button class="btn-secondary" onclick={onClose}>Cancel</button>
       <button class="btn-primary" onclick={saveSettings} disabled={isSaving}>
@@ -119,6 +146,7 @@
         {isSaving ? 'Saving...' : 'Save Settings'}
       </button>
     </div>
+    {/if}
   </div>
 </div>
 

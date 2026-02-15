@@ -32,6 +32,8 @@ parking_lot = "0.12"
 walkdir = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = "0.4"
+ignore = "0.4"
+notify = "6"
 
 [profile.release]
 panic = "abort"

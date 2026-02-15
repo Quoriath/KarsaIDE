@@ -4,17 +4,31 @@ use crate::terminal::{Terminal, ShellInfo};
 use crate::database::{Database, Conversation, Message};
 use crate::mcp::{MCPCore, MCPRequest, MCPResponse};
 use crate::workspace::{FileNode, scan_directory, quick_scan};
+use crate::intelligence::{IndexEngine, CodebaseStats, ProjectMap};
 use tauri::{command, AppHandle, State, Emitter};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub struct TerminalState {
     terminals: Arc<Mutex<HashMap<String, Terminal>>>,
 }
 
+pub struct IntelligenceState {
+    engine: Arc<Mutex<Option<IndexEngine>>>,
+}
+
 pub struct AppState {
     db: Arc<Mutex<Database>>,
     mcp: Arc<Mutex<MCPCore>>,
+}
+
+impl IntelligenceState {
+    pub fn new() -> Self {
+        Self {
+            engine: Arc::new(Mutex::new(None)),
+        }
+    }
 }
 
 impl TerminalState {
@@ -372,6 +386,72 @@ pub fn write_to_terminal(
             .map_err(|e| format!("Failed to write to terminal: {}", e))
     } else {
         Err("Terminal not found".to_string())
+    }
+}
+
+// Intelligence commands
+
+#[command]
+pub fn start_indexing(
+    path: String,
+    state: State<'_, IntelligenceState>,
+) -> Result<(), String> {
+    let engine = IndexEngine::new(PathBuf::from(path));
+    engine.start_indexing();
+    
+    let mut eng = state.engine.lock().unwrap();
+    *eng = Some(engine);
+    
+    Ok(())
+}
+
+#[command]
+pub fn get_codebase_stats(
+    state: State<'_, IntelligenceState>,
+) -> Result<CodebaseStats, String> {
+    let eng = state.engine.lock().unwrap();
+    if let Some(engine) = eng.as_ref() {
+        Ok(engine.get_stats())
+    } else {
+        Err("No active index".to_string())
+    }
+}
+
+#[command]
+pub fn get_project_map(
+    state: State<'_, IntelligenceState>,
+) -> Result<ProjectMap, String> {
+    let eng = state.engine.lock().unwrap();
+    if let Some(engine) = eng.as_ref() {
+        Ok(engine.get_project_map())
+    } else {
+        Err("No active index".to_string())
+    }
+}
+
+#[command]
+pub fn query_codebase(
+    query: String,
+    state: State<'_, IntelligenceState>,
+) -> Result<Vec<String>, String> {
+    let eng = state.engine.lock().unwrap();
+    if let Some(engine) = eng.as_ref() {
+        Ok(engine.query_codebase(&query))
+    } else {
+        Err("No active index".to_string())
+    }
+}
+
+#[command]
+pub fn force_reindex(
+    state: State<'_, IntelligenceState>,
+) -> Result<(), String> {
+    let eng = state.engine.lock().unwrap();
+    if let Some(engine) = eng.as_ref() {
+        engine.start_indexing();
+        Ok(())
+    } else {
+        Err("No active index".to_string())
     }
 }
 

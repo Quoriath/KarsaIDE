@@ -7,6 +7,7 @@ mod database;
 mod cache;
 mod mcp;
 mod workspace;
+mod intelligence;
 
 use file_system::*;
 use commands::*;
@@ -22,6 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(TerminalState::new())
         .manage(AppState::new())
+        .manage(IntelligenceState::new())
         .invoke_handler(tauri::generate_handler![
             read_file_content,
             write_file_content,
@@ -63,6 +65,11 @@ pub fn run() {
             scan_workspace,
             scan_folder_shallow,
             set_active_workspace,
+            start_indexing,
+            get_codebase_stats,
+            get_project_map,
+            query_codebase,
+            force_reindex,
         ])
         .setup(|_app| {
             log::info!("Karsa IDE setup complete");

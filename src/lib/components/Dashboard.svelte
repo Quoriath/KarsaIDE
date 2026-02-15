@@ -60,6 +60,10 @@
         fsStore.setProjectDir(selected);
         fsStore.setFileTree(tree);
         
+        // Start intelligence indexing
+        console.log('Starting intelligence indexing...');
+        await invoke('start_indexing', { path: selected });
+        
         console.log('Workspace opened successfully');
       } else {
         console.log('No folder selected (user cancelled)');
