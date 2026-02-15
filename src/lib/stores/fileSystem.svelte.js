@@ -6,10 +6,15 @@ class FileSystemStore {
   activeFile = $state(null);
   activeFileContent = $state('');
   directoryContents = $state([]);
+  fileTree = $state(null);
 
   async setProjectDir(path) {
     this.currentProjectDir = path;
     await this.refreshDirectory(path);
+  }
+
+  setFileTree(tree) {
+    this.fileTree = tree;
   }
 
   async refreshDirectory(path) {

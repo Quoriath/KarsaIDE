@@ -22,6 +22,7 @@
   import Terminal from './lib/components/Terminal.svelte';
   import Settings from './lib/components/Settings.svelte';
   import TitleBar from './lib/components/TitleBar.svelte';
+  import FileExplorer from './lib/components/FileExplorer.svelte';
   
   let showOnboarding = $state(true);
   let showChat = $state(configStore.settings.layout.chatVisible);
@@ -127,7 +128,7 @@
           <!-- Sidebar (Resizable) -->
           {#if activeView === 'explorer'}
             <ResizablePanel side="left" initialSize={260} minSize={200} maxSize={400} className="bg-muted/5 border-r border-border z-30">
-              <Sidebar />
+              <FileExplorer />
             </ResizablePanel>
           {:else if activeView === 'search'}
             <ResizablePanel side="left" initialSize={300} className="bg-muted/5 border-r border-border p-4 text-sm text-muted-foreground z-30">

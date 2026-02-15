@@ -39,8 +39,17 @@
   async function openFolder() {
     try {
       const selected = await open({ directory: true, multiple: false });
-      if (selected) fsStore.setProjectDir(selected);
-    } catch (err) { console.error(err); }
+      if (selected) {
+        // Set as active workspace
+        await invoke('set_active_workspace', { path: selected });
+        // Scan workspace
+        const tree = await invoke('scan_workspace', { path: selected, depth: 5 });
+        fsStore.setProjectDir(selected);
+        fsStore.setFileTree(tree);
+      }
+    } catch (err) { 
+      console.error('Failed to open folder:', err); 
+    }
   }
 
   async function openFile() {
