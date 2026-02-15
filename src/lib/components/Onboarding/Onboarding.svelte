@@ -54,10 +54,26 @@
           font_size: 14,
           tab_size: 2,
           word_wrap: true,
-          theme: 'dark'
+          theme: 'dark',
+          auto_save: true,
+          auto_save_delay: 1000
         },
-        terminal: {},
-        session: {}
+        terminal: {
+          shell: null,
+          font_size: 14,
+          scrollback: 1000
+        },
+        session: {
+          last_workspace: null,
+          open_files: [],
+          active_file: null,
+          recent_workspaces: []
+        },
+        security: {
+          auto_execute_shell: false,
+          auto_delete_files: false,
+          auto_move_files: false
+        }
       };
       
       await invoke('save_ai_config', { config: fullConfig });
