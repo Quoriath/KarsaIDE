@@ -132,10 +132,9 @@
           </div>
         </label>
       </section>
-    </div>
-    {:else if activeTab === 'intelligence'}
-      <IntelligenceTab />
-    {/if}
+      {:else if activeTab === 'intelligence'}
+        <IntelligenceTab />
+      {/if}
     </div>
 
     {#if activeTab === 'general'}
