@@ -1,9 +1,14 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
   import { fsStore } from '../../stores/fileSystem.svelte.js';
-  import { tick } from 'svelte';
-  import { Send, X, Bot, User, Sparkles, FileCode, Loader2, Eraser } from 'lucide-svelte';
+  import { configStore } from '../../stores/config.svelte.js';
+  import { tick, onMount } from 'svelte';
+  import { 
+    Send, X, Bot, User, Sparkles, FileCode, Loader2, Eraser, 
+    Settings, Download, Upload, Sliders 
+  } from 'lucide-svelte';
   import MarkdownRenderer from '../MarkdownRenderer.svelte';
+  import ModelSelector from '../ModelSelector.svelte';
   import { cn } from '../../utils.js';
 
   let { onClose } = $props();
@@ -11,10 +16,28 @@
   let messages = $state([]);
   let input = $state('');
   let isLoading = $state(false);
+  let showSettings = $state(false);
   let messagesContainer;
   let textarea;
+  
+  // Settings
+  let temperature = $state(0.7);
+  let maxTokens = $state(2000);
+  let selectedModel = $state(configStore.settings.ai.selectedModel || 'gemini-1.5-pro');
 
   const SYSTEM_PROMPT = "You are Karsa, an autonomous coding agent. You have access to the user's open file. Answer concisely and provide code blocks when relevant. Use markdown.";
+
+  onMount(() => {
+    // Load last session specific to sidebar
+    const saved = localStorage.getItem('karsa-sidebar-chat');
+    if (saved) {
+      try { messages = JSON.parse(saved); } catch (e) {}
+    }
+  });
+
+  function saveHistory() {
+    localStorage.setItem('karsa-sidebar-chat', JSON.stringify(messages.slice(-50)));
+  }
 
   async function sendMessage() {
     if (!input.trim() || isLoading) return;
@@ -31,7 +54,14 @@
     scrollToBottom();
 
     try {
-      const config = await invoke('get_ai_config').catch(() => ({}));
+      // Build proper config with all required fields (map camelCase to snake_case)
+      const config = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey || null,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: configStore.settings.ai.models || []
+      };
       
       let contextContent = '';
       if (fsStore.activeFile) {
@@ -40,7 +70,7 @@
 
       const msgs = [
         { role: 'system', content: SYSTEM_PROMPT },
-        ...messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+        ...messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: `${userMessage}${contextContent}` }
       ];
 
@@ -48,6 +78,7 @@
 
       const aiTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       messages = [...messages, { role: 'assistant', content: response, timestamp: aiTimestamp }];
+      saveHistory();
     } catch (e) {
       const errTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp: errTimestamp }];
@@ -76,21 +107,91 @@
     target.style.height = 'auto';
     target.style.height = `${Math.min(target.scrollHeight, 150)}px`;
   }
+
+  function exportChat() {
+    const data = JSON.stringify(messages, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `karsa-sidebar-chat-${Date.now()}.json`;
+    a.click();
+  }
+
+  function importChat(event) {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          messages = JSON.parse(e.target.result);
+          saveHistory();
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      reader.readAsText(file);
+    }
+  }
 </script>
 
 <div class="h-full flex flex-col bg-background border-l border-border">
   <!-- Header -->
-  <div class="h-9 min-h-[36px] px-3 border-b border-border flex items-center justify-between bg-muted/10">
-    <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Assistant</span>
+  <div class="h-10 min-h-[40px] px-3 border-b border-border flex items-center justify-between bg-muted/10 shrink-0">
+    <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+       <Sparkles size={14} class="text-primary" />
+       Assistant
+    </div>
+    
     <div class="flex items-center gap-1">
-      <button class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors" title="Clear Chat" onclick={() => messages = []}>
+      <button class={cn("p-1 hover:bg-muted rounded transition-colors", showSettings ? "text-primary bg-primary/10" : "text-muted-foreground")} title="Settings" onclick={() => showSettings = !showSettings}>
+        <Sliders size={14} />
+      </button>
+      <label class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Import Chat">
+        <Upload size={14} />
+        <input type="file" accept=".json" onchange={importChat} class="hidden" />
+      </label>
+      <button class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors" title="Export Chat" onclick={exportChat}>
+        <Download size={14} />
+      </button>
+      <button class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors" title="Clear Chat" onclick={() => { messages = []; saveHistory(); }}>
         <Eraser size={14} />
       </button>
+      <div class="w-[1px] h-3 bg-border mx-1"></div>
       <button onclick={onClose} class="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors">
         <X size={14} />
       </button>
     </div>
   </div>
+
+  <!-- Settings Panel (Collapsible) -->
+  {#if showSettings}
+    <div class="px-4 py-3 border-b border-border bg-muted/5 animate-in slide-in-from-top-2 duration-200">
+       <div class="space-y-3">
+          <ModelSelector 
+            bind:selectedModel 
+            apiKey={configStore.settings.ai.apiKey}
+            onModelChange={(m) => configStore.updateAiConfig({ selectedModel: m.id })}
+          />
+          
+          <div class="space-y-1">
+             <div class="flex justify-between text-[10px] text-muted-foreground">
+                <span>Temperature</span>
+                <span>{temperature}</span>
+             </div>
+             <input type="range" min="0" max="1" step="0.1" bind:value={temperature} class="w-full h-1.5 bg-muted rounded-full accent-primary appearance-none cursor-pointer" />
+          </div>
+          
+          <div class="space-y-1">
+             <div class="flex justify-between text-[10px] text-muted-foreground">
+                <span>Max Tokens</span>
+                <span>{maxTokens}</span>
+             </div>
+             <input type="range" min="100" max="8000" step="100" bind:value={maxTokens} class="w-full h-1.5 bg-muted rounded-full accent-primary appearance-none cursor-pointer" />
+          </div>
+       </div>
+    </div>
+  {/if}
 
   <!-- Messages -->
   <div class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth" bind:this={messagesContainer}>
@@ -139,7 +240,7 @@
   </div>
 
   <!-- Input Area -->
-  <div class="p-3 bg-background border-t border-border">
+  <div class="p-3 bg-background border-t border-border shrink-0">
     <div class="relative flex items-end gap-2 bg-muted/30 border border-border rounded-xl p-1.5 focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50 transition-all shadow-sm">
       <textarea
         bind:this={textarea}
@@ -163,11 +264,16 @@
         {/if}
       </button>
     </div>
-    {#if fsStore.activeFile}
-      <div class="flex items-center gap-1.5 mt-2 px-1">
-         <FileCode size={10} class="text-muted-foreground" />
-         <span class="text-[10px] text-muted-foreground truncate max-w-[200px]">{fsStore.activeFile.name}</span>
-      </div>
-    {/if}
+    <div class="flex items-center justify-between mt-2 px-1">
+       {#if fsStore.activeFile}
+          <div class="flex items-center gap-1.5 max-w-[70%]">
+             <FileCode size={10} class="text-muted-foreground" />
+             <span class="text-[10px] text-muted-foreground truncate">{fsStore.activeFile.name}</span>
+          </div>
+       {:else}
+          <span></span>
+       {/if}
+       <span class="text-[9px] text-muted-foreground font-medium opacity-70">{selectedModel}</span>
+    </div>
   </div>
 </div>

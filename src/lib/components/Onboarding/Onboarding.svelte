@@ -1,15 +1,14 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
   import { onMount } from 'svelte';
-  import { Check, Sparkles, Server, Zap, Globe, Key } from 'lucide-svelte';
+  import { Check, Sparkles, Server, Zap, Globe, Key, RefreshCw } from 'lucide-svelte';
   import { cn } from '../../utils.js';
+  import ModelSelector from '../ModelSelector.svelte';
 
   let { onComplete } = $props();
   
   let provider = $state('kilo');
   let apiKey = $state('');
-  let modelInput = $state('minimax/minimax-m2.5:free, z-ai/glm-5:free');
-  let models = $state(['minimax/minimax-m2.5:free', 'z-ai/glm-5:free']);
   let selectedModel = $state('minimax/minimax-m2.5:free');
   let baseUrl = $state('https://api.kilo.ai/api/gateway/chat/completions');
   
@@ -17,47 +16,32 @@
   let connectionSuccess = $state(false);
   let error = $state('');
 
-  function parseModels() {
-    models = modelInput.split(',').map(m => m.trim()).filter(m => m.length > 0);
-    if (models.length > 0 && !models.includes(selectedModel)) {
-      selectedModel = models[0];
-    }
-  }
-
   function handleProviderChange(p) {
     provider = p;
     if (p === 'kilo') {
       baseUrl = 'https://api.kilo.ai/api/gateway/chat/completions';
-      modelInput = 'minimax/minimax-m2.5:free, z-ai/glm-5:free';
-      parseModels();
     } else if (p === 'ollama') {
       baseUrl = 'http://localhost:11434/v1/chat/completions';
-      modelInput = 'llama3.2, codellama';
-      parseModels();
     } else {
       baseUrl = 'https://api.openai.com/v1/chat/completions';
-      modelInput = 'gpt-4o, gpt-4o-mini';
-      parseModels();
     }
   }
 
   async function handleConnect() {
     error = '';
     isConnecting = true;
-    parseModels();
 
     const config = {
       provider,
       api_key: apiKey || null,
       base_url: baseUrl,
       model_name: selectedModel,
-      custom_models: models
+      selectedModel: selectedModel // redundancy for store compat
     };
 
     try {
-      // Mock invoke if backend not ready, but try real first
       await invoke('test_ai_connection', { config }).catch(() => {
-        // Fallback for UI demo if backend fails or doesn't exist
+        // Mock success if backend missing
         return new Promise(resolve => setTimeout(resolve, 1000));
       });
       
@@ -132,33 +116,33 @@
           </div>
 
           {#if provider === 'kilo' || provider === 'custom'}
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-muted-foreground block">API Key</label>
-              <div class="relative">
-                <input 
-                  type="password" 
-                  bind:value={apiKey}
-                  placeholder="sk-..."
-                  class="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all pl-10"
-                />
-                <Key size={16} class="absolute left-3 top-2.5 text-muted-foreground" />
+            <div class="space-y-4">
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-muted-foreground block">API Key</label>
+                <div class="relative">
+                  <input 
+                    type="password" 
+                    bind:value={apiKey}
+                    placeholder="sk-..."
+                    class="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all pl-10"
+                  />
+                  <Key size={16} class="absolute left-3 top-2.5 text-muted-foreground" />
+                </div>
               </div>
-              <p class="text-[10px] text-muted-foreground">Your key is stored locally and securely.</p>
+
+              <div class="space-y-2">
+                 <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-muted-foreground">Model</label>
+                 </div>
+                 
+                 <ModelSelector 
+                   bind:selectedModel 
+                   apiKey={apiKey}
+                   className="w-full"
+                 />
+              </div>
             </div>
           {/if}
-
-          <!-- Advanced Model Settings (Hidden by default or simplified) -->
-          <div class="space-y-2">
-             <label class="text-sm font-medium text-muted-foreground block">Model Selection</label>
-             <select 
-               bind:value={selectedModel}
-               class="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none transition-all appearance-none"
-             >
-               {#each models as model}
-                 <option value={model}>{model}</option>
-               {/each}
-             </select>
-          </div>
 
           {#if error}
             <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-xs flex items-center gap-2">
@@ -169,7 +153,7 @@
           <button 
             onclick={handleConnect}
             disabled={isConnecting}
-            class="w-full bg-primary text-primary-foreground font-semibold py-2.5 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            class="w-full bg-primary text-primary-foreground font-semibold py-2.5 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
           >
             {#if isConnecting}
               <div class="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></div>

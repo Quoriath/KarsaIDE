@@ -13,6 +13,8 @@
     Plus
   } from 'lucide-svelte';
 
+  let { onClose } = $props();
+
   let container;
   let activeTab = $state('terminal');
   let command = $state('');
@@ -113,7 +115,7 @@
       <button class="p-1 hover:bg-muted/30 rounded text-muted-foreground hover:text-foreground transition-colors" title="Clear" onclick={clearTerminal}>
         <Trash2 size={12} />
       </button>
-      <button class="p-1 hover:bg-muted/30 rounded text-muted-foreground hover:text-foreground transition-colors" title="Close">
+      <button class="p-1 hover:bg-muted/30 rounded text-muted-foreground hover:text-foreground transition-colors" title="Close" onclick={onClose}>
         <X size={12} />
       </button>
     </div>

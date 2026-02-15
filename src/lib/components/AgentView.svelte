@@ -4,11 +4,9 @@
   import { listen } from '@tauri-apps/api/event';
   import { configStore } from '../stores/config.svelte.js';
   import { fsStore } from '../stores/fileSystem.svelte.js';
-  import { 
-    Send, Bot, User, Sparkles, Loader2, Maximize2, Minimize2, Settings, 
-    Plus, X, Cpu, Globe, Key, History, Trash2, Download, Search, MessageSquare 
-  } from 'lucide-svelte';
+  import { Send, Bot, User, Sparkles, Loader2, Maximize2, Minimize2, Settings, Plus, X, Cpu, Globe, Key, History, Trash2, Download, Search, MessageSquare } from 'lucide-svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
+  import ModelSelector from '../ModelSelector.svelte';
   import { cn } from '../utils.js';
 
   // --- STATE MANAGEMENT ---
@@ -17,7 +15,6 @@
   let searchQuery = $state('');
   let input = $state('');
   let isLoading = $state(false);
-  let showModelSelector = $state(false);
   let streamingContent = $state(''); 
   
   let messagesContainer;
@@ -29,11 +26,6 @@
   
   // Persistent Config
   let selectedModel = $state(configStore.settings.ai.selectedModel || 'gemini-1.5-pro');
-  const availableModels = $derived(
-     Array.isArray(configStore.settings.ai.models) 
-       ? configStore.settings.ai.models 
-       : (configStore.settings.ai.models || '').split(',').map(m => m.trim())
-  );
 
   // --- LIFECYCLE & PERSISTENCE ---
 
@@ -233,11 +225,24 @@
         };
       }
 
-      await invoke('stream_chat_completion', {
-        message: userMessage,
-        model: selectedModel,
-        context: context,
-        config: configStore.settings.ai
+      // Build proper config with base_url (map camelCase to snake_case)
+      const aiConfig = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey || null,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: configStore.settings.ai.models || []
+      };
+
+      // Build messages array
+      const messages = activeSession.messages.map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+
+      await invoke('send_chat_completion_stream', {
+        messages: messages,
+        config: aiConfig
       });
     } catch (e) {
       console.error('Failed to start stream:', e);
@@ -358,33 +363,12 @@
       
       <!-- Model Selector -->
       <div class="flex items-center gap-4">
-        <div class="relative">
-          <button 
-            class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 hover:bg-muted text-sm font-medium transition-all border border-border hover:border-primary/50 group"
-            onclick={() => showModelSelector = !showModelSelector}
-          >
-             <Sparkles size={14} class="text-primary group-hover:scale-110 transition-transform" />
-             <span>{selectedModel}</span>
-             <Globe size={12} class="ml-2 opacity-50" />
-          </button>
-          
-          {#if showModelSelector}
-            <div class="absolute top-full left-0 mt-2 w-64 bg-popover border border-border rounded-xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-border">
-              <div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">Select Model</div>
-              {#each availableModels as model}
-                <button 
-                  class={cn("w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-accent flex items-center gap-2 transition-colors", selectedModel === model ? "bg-accent text-accent-foreground font-medium" : "text-popover-foreground")}
-                  onclick={() => selectModel(model)}
-                >
-                  <Cpu size={14} class={selectedModel === model ? "text-primary" : "opacity-50"} />
-                  <span class="truncate">{model}</span>
-                  {#if selectedModel === model}
-                    <div class="ml-auto w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-          {/if}
+        <div class="w-64">
+          <ModelSelector 
+            bind:selectedModel 
+            apiKey={configStore.settings.ai.apiKey}
+            onModelChange={(m) => configStore.updateAiConfig({ selectedModel: m.id })}
+          />
         </div>
       </div>
       
