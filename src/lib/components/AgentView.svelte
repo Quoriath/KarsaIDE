@@ -435,7 +435,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
     </header>
 
     <!-- Messages -->
-    <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scroll-smooth pb-40 scrollbar-thin scrollbar-thumb-muted/50 hover:scrollbar-thumb-muted" bind:this={messagesContainer}>
+    <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scroll-smooth pb-4 scrollbar-thin scrollbar-thumb-muted/50 hover:scrollbar-thumb-muted" bind:this={messagesContainer}>
        {#if messages.length === 0 && !isLoading && !streamingContent}
          <div class="h-full flex flex-col items-center justify-center text-center space-y-8 opacity-0 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-forwards" style="animation-delay: 100ms">
            <div class="relative">
@@ -489,7 +489,7 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
                 <span class="text-[10px] opacity-50">• {msg.timestamp}</span>
              </div>
              
-             <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md", 
+             <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text", 
                msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
                {#if msg.role === 'assistant'}
                  <MarkdownRenderer content={msg.content} />

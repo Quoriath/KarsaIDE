@@ -451,7 +451,7 @@ Focus on accuracy using available tools.`;
         </div>
 
         <div class={cn("flex flex-col max-w-[85%]", msg.role === 'user' ? "items-end" : "items-start")}>
-          <div class={cn("rounded-2xl px-3 py-2.5 text-sm shadow-sm", 
+          <div class={cn("rounded-2xl px-3 py-2.5 text-sm shadow-sm select-text", 
             msg.role === 'user' 
               ? "bg-primary text-primary-foreground rounded-tr-sm" 
               : "bg-muted/30 border border-border text-foreground rounded-tl-sm")}>
