@@ -157,7 +157,9 @@ pub fn get_conversations(
     state: State<'_, AppState>,
 ) -> Result<Vec<Conversation>, String> {
     let db = state.db.lock().unwrap();
-    db.get_conversations(mode.as_deref(), limit.unwrap_or(50))
+    // If mode is "all", pass None to get all conversations
+    let filter_mode = mode.filter(|m| m != "all");
+    db.get_conversations(filter_mode.as_deref(), limit.unwrap_or(50))
         .map_err(|e| e.to_string())
 }
 
@@ -221,7 +223,8 @@ pub fn search_conversations(
     state: State<'_, AppState>,
 ) -> Result<Vec<Conversation>, String> {
     let db = state.db.lock().unwrap();
-    db.search_conversations(&query, mode.as_deref())
+    let filter_mode = mode.filter(|m| m != "all");
+    db.search_conversations(&query, filter_mode.as_deref())
         .map_err(|e| e.to_string())
 }
 

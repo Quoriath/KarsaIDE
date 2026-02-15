@@ -21,7 +21,6 @@
   let isLoading = $state(false);
   let showSettings = $state(false);
   let showHistory = $state(false);
-  let showAllModes = $state(false);  // Toggle for unified view
   let searchQuery = $state('');
   let messagesContainer;
   let textarea;
@@ -85,11 +84,11 @@ Focus on accuracy over speed. Quality over quantity.`;
       if (searchQuery.trim()) {
         conversations = await invoke('search_conversations', {
           query: searchQuery,
-          mode: showAllModes ? null : 'editor'
+          mode: 'all'
         });
       } else {
         conversations = await invoke('get_conversations', {
-          mode: showAllModes ? null : 'editor',
+          mode: 'all',
           limit: 50
         });
       }
@@ -122,7 +121,7 @@ Focus on accuracy over speed. Quality over quantity.`;
     try {
       const title = "New Chat";  // Temporary title
       const id = await invoke('create_conversation', {
-        mode: 'editor',
+        mode: 'unified',
         title,
         contextPath: fsStore.activeFile?.path || null,
         model: selectedModel
@@ -323,26 +322,6 @@ Focus on accuracy over speed. Quality over quantity.`;
           placeholder="Search chats..."
           class="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:ring-1 focus:ring-primary outline-none"
         />
-        <div class="flex items-center gap-2 text-[10px]">
-          <button
-            class={cn(
-              "px-2 py-1 rounded transition-colors",
-              !showAllModes ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
-            )}
-            onclick={() => { showAllModes = false; loadConversations(); }}
-          >
-            Editor
-          </button>
-          <button
-            class={cn(
-              "px-2 py-1 rounded transition-colors",
-              showAllModes ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
-            )}
-            onclick={() => { showAllModes = true; loadConversations(); }}
-          >
-            All Chats
-          </button>
-        </div>
       </div>
       
       <div class="p-2 space-y-1">

@@ -78,8 +78,8 @@
 
   async function loadConversations() {
     try {
-      // Backend: get_conversations(mode: 'agent')
-      conversations = await invoke('get_conversations', { mode: 'agent', limit: 50 });
+      // Load ALL conversations (no mode filter)
+      conversations = await invoke('get_conversations', { mode: 'all', limit: 50 });
     } catch (e) {
       console.error('Failed to load conversations:', e);
     }
@@ -88,7 +88,7 @@
   async function createNewConversation() {
     try {
       const id = await invoke('create_conversation', {
-        mode: 'agent',
+        mode: 'unified',
         title: 'New Chat',
         contextPath: fsStore.activeFile?.path || null,
         model: selectedModel
