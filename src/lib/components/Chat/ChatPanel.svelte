@@ -69,12 +69,12 @@ Focus on accuracy over speed. Quality over quantity.`;
       }
     });
     
-    // Listen for conversation updates (real-time sync)
+    // Listen for conversation updates (real-time sync from other views)
     await listen('conversation-updated', async (event) => {
       await loadConversations();
-      // Reload current conversation if it was updated
-      if (activeConversationId === event.payload.id) {
-        await loadConversation(activeConversationId);
+      // Only reload if it's NOT the active conversation (avoid duplicate)
+      if (activeConversationId !== event.payload.id) {
+        return;
       }
     });
   });
@@ -195,12 +195,14 @@ Focus on accuracy over speed. Quality over quantity.`;
   async function sendMessage() {
     if (!input.trim() || isLoading) return;
 
+    // Prevent double send
+    isLoading = true;
+
     const userMessage = input.trim();
     const isFirstMessage = messages.length === 0;
     input = '';
     if (textarea) textarea.style.height = 'auto';
     
-    isLoading = true;
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     messages = [...messages, { role: 'user', content: userMessage, timestamp }];
@@ -239,13 +241,16 @@ Focus on accuracy over speed. Quality over quantity.`;
       const response = await invoke('send_chat_completion', { messages: msgs, config });
 
       const aiTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      messages = [...messages, { role: 'assistant', content: response, timestamp: aiTimestamp }];
+      const aiMessage = { role: 'assistant', content: response, timestamp: aiTimestamp };
+      messages = [...messages, aiMessage];
       
       // Save to database
       await saveMessage('assistant', response);
     } catch (e) {
       const errTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp: errTimestamp }];
+      const errorMsg = { role: 'assistant', content: `**Error**: ${e}`, timestamp: errTimestamp };
+      messages = [...messages, errorMsg];
+      await saveMessage('assistant', errorMsg.content);
     } finally {
       isLoading = false;
       await tick();

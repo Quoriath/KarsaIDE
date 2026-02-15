@@ -46,10 +46,9 @@
     });
 
     const unlistenDone = await listen('ai-stream-done', async () => {
-      if (streamingContent.trim()) {
+      // Guard: only save if content exists and not already saved
+      if (streamingContent.trim() && isLoading) {
         await saveMessage('assistant', streamingContent);
-        // Reload to get properly ID-ed message from DB or just push to local state for speed
-        // For speed, we push local state:
         const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         messages = [...messages, { role: 'assistant', content: streamingContent, timestamp }];
       }
@@ -58,12 +57,13 @@
       scrollToBottom();
     });
 
-    // 3. Listen for conversation updates (real-time sync)
+    // 3. Listen for conversation updates (real-time sync from other views)
     const unlistenUpdate = await listen('conversation-updated', async (event) => {
       await loadConversations();
-      // Reload current conversation if it was updated
-      if (activeConversationId === event.payload.id) {
-        await loadMessages(activeConversationId);
+      // Only reload if it's NOT the active conversation (avoid duplicate)
+      if (activeConversationId !== event.payload.id) {
+        // Just refresh the list, don't reload current messages
+        return;
       }
     });
 
@@ -207,12 +207,15 @@
   async function sendMessage() {
     if (!input.trim() || isLoading) return;
     
+    // Prevent double send
+    if (isLoading) return;
+    isLoading = true;
+    
     if (!activeConversationId) await createNewConversation();
 
     const userMessage = input.trim();
     const isFirstMessage = messages.length === 0;
     input = '';
-    isLoading = true;
     streamingContent = ''; 
     
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -282,12 +285,15 @@ Current context: ${fsStore.activeFile ? `File: ${fsStore.activeFile.name}` : 'No
       });
     } catch (e) {
       console.error('Failed to start stream:', e);
-      messages = [...messages, { 
+      const errorMsg = { 
         role: 'assistant', 
         content: `**Error**: ${e.toString()}`, 
         timestamp: new Date().toLocaleTimeString() 
-      }];
+      };
+      messages = [...messages, errorMsg];
+      await saveMessage('assistant', errorMsg.content);
       isLoading = false;
+      streamingContent = '';
     }
   }
 
