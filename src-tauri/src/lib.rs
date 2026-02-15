@@ -45,6 +45,7 @@ pub fn run() {
             delete_conversation,
             toggle_terminal,
             toggle_chat,
+            get_shell_info,
             spawn_terminal,
             write_to_terminal,
         ])

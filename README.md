@@ -15,7 +15,8 @@
 - **Model Switching:** Dynamic model selection
 
 ### 💻 Native Terminal
-- **Real PTY:** Actual shell integration (bash/zsh/fish)
+- **Auto-Detection:** Detects OS native shell (PowerShell/bash/zsh)
+- **Real PTY:** Actual shell integration
 - **Live I/O:** Real-time stdin/stdout streaming
 - **Multi-Terminal:** Support for multiple terminal instances
 - **Cross-Platform:** Works on Linux, macOS, Windows

@@ -1,6 +1,6 @@
 use crate::ai_client::{AIClient, ModelInfo};
 use crate::config_manager::{AIConfig, KarsaConfig, SessionData, load_config, save_config, update_session};
-use crate::terminal::Terminal;
+use crate::terminal::{Terminal, ShellInfo};
 use crate::database::{Database, Conversation, Message};
 use tauri::{command, AppHandle, State, Emitter};
 use std::sync::{Arc, Mutex};
@@ -154,6 +154,11 @@ pub fn toggle_chat(app: AppHandle, visible: bool) -> Result<(), String> {
 }
 
 // Terminal commands
+#[command]
+pub fn get_shell_info() -> ShellInfo {
+    Terminal::get_shell_info()
+}
+
 #[command]
 pub fn spawn_terminal(
     app: AppHandle,

@@ -1,7 +1,7 @@
 <script>
   import { Files, Search, Settings, Sparkles, LayoutGrid, Cpu, Code2, PanelBottom } from 'lucide-svelte';
   import { cn } from '../utils.js';
-  import { configStore } from '../../stores/config.svelte.js';
+  import { configStore } from '../stores/config.svelte.js';
   
   let { activeView = $bindable('explorer'), activeMode = $bindable('editor'), onChatToggle, onOpenSettings, onTerminalToggle } = $props();
   

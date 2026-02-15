@@ -6,7 +6,7 @@
   import { fsStore } from '../stores/fileSystem.svelte.js';
   import { Send, Bot, User, Sparkles, Loader2, Maximize2, Minimize2, Settings, Plus, X, Cpu, Globe, Key, History, Trash2, Download, Search, MessageSquare } from 'lucide-svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
-  import ModelSelector from '../ModelSelector.svelte';
+  import ModelSelector from './ModelSelector.svelte';
   import { cn } from '../utils.js';
 
   // --- STATE MANAGEMENT ---

@@ -19,9 +19,7 @@ impl Terminal {
             pixel_height: 0,
         })?;
 
-        let shell_cmd = shell.unwrap_or_else(|| {
-            std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
-        });
+        let shell_cmd = shell.unwrap_or_else(Self::detect_shell);
 
         let mut cmd = CommandBuilder::new(&shell_cmd);
         cmd.cwd(std::env::current_dir().unwrap_or_default());
@@ -69,4 +67,70 @@ impl Terminal {
         // Future: implement PTY resize
         Ok(())
     }
+
+    /// Auto-detect shell based on OS
+    fn detect_shell() -> String {
+        #[cfg(target_os = "windows")]
+        {
+            // Windows: PowerShell > CMD
+            if let Ok(pwsh) = which::which("pwsh") {
+                return pwsh.to_string_lossy().to_string();
+            }
+            if let Ok(powershell) = which::which("powershell") {
+                return powershell.to_string_lossy().to_string();
+            }
+            "cmd.exe".to_string()
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS: zsh (default since Catalina) > bash
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Linux: $SHELL env > zsh > bash > sh
+            if let Ok(shell) = std::env::var("SHELL") {
+                return shell;
+            }
+            
+            for shell in &["/bin/zsh", "/bin/bash", "/bin/sh"] {
+                if std::path::Path::new(shell).exists() {
+                    return shell.to_string();
+                }
+            }
+            
+            "/bin/sh".to_string()
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        {
+            // Fallback for other Unix-like systems
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+        }
+    }
+
+    /// Get shell info for display
+    pub fn get_shell_info() -> ShellInfo {
+        let shell = Self::detect_shell();
+        let shell_name = std::path::Path::new(&shell)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        ShellInfo {
+            path: shell,
+            name: shell_name,
+            os: std::env::consts::OS.to_string(),
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct ShellInfo {
+    pub path: String,
+    pub name: String,
+    pub os: String,
 }
