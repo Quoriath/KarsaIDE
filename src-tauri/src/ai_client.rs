@@ -43,11 +43,16 @@ pub struct ModelInfo {
     pub id: String,
     pub name: String,
     pub provider: String,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct KiloModelsResponse {
+    #[serde(default)]
     data: Vec<KiloModel>,
+    #[serde(default)]
+    models: Vec<KiloModel>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +60,10 @@ struct KiloModel {
     id: String,
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    object: Option<String>,
+    #[serde(default)]
+    owned_by: Option<String>,
 }
 
 pub struct AIClient {
@@ -88,17 +97,34 @@ impl AIClient {
             return Err(format!("API error: {}", response.status()));
         }
 
-        let kilo_response: KiloModelsResponse = response
-            .json()
-            .await
+        // Try to parse as KiloModelsResponse
+        let text = response.text().await
+            .map_err(|e| format!("Failed to read response: {}", e))?;
+
+        // Try parsing as object with data or models field
+        let kilo_response: KiloModelsResponse = serde_json::from_str(&text)
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        let models = kilo_response.data
+        // Use data field if available, otherwise models field
+        let models_list = if !kilo_response.data.is_empty() {
+            kilo_response.data
+        } else {
+            kilo_response.models
+        };
+
+        let models = models_list
             .into_iter()
-            .map(|m| ModelInfo {
-                id: m.id.clone(),
-                name: m.name.unwrap_or_else(|| m.id.clone()),
-                provider: "kilo".to_string(),
+            .map(|m| {
+                let display_name = m.name.clone()
+                    .or_else(|| m.owned_by.clone())
+                    .unwrap_or_else(|| m.id.clone());
+                
+                ModelInfo {
+                    id: m.id.clone(),
+                    name: display_name,
+                    provider: "kilo".to_string(),
+                    description: m.object.clone(),
+                }
             })
             .collect();
 

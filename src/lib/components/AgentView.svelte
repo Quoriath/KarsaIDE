@@ -309,9 +309,11 @@
         <div class="space-y-1">
           <div class="text-[10px] font-medium text-muted-foreground/70 px-2 uppercase tracking-wider">{groupName}</div>
           {#each groupItems as session}
-            <button 
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div 
               class={cn(
-                "w-full text-left px-3 py-2 text-sm rounded-lg flex items-center gap-3 border transition-all group relative overflow-hidden",
+                "w-full px-3 py-2 text-sm rounded-lg flex items-center gap-3 border transition-all group relative overflow-hidden cursor-pointer",
                 activeSessionId === session.id 
                   ? "bg-accent/50 text-foreground border-border shadow-sm" 
                   : "border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground"
@@ -328,13 +330,13 @@
               
               <!-- Delete Button (Visible on Hover/Active) -->
               <button 
-                class={cn("absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors", activeSessionId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
+                class={cn("absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors bg-background/80 backdrop-blur-sm", activeSessionId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
                 onclick={(e) => deleteSession(e, session.id)}
                 title="Delete Chat"
               >
                 <Trash2 size={12} />
               </button>
-            </button>
+            </div>
           {/each}
         </div>
       {/each}

@@ -2,7 +2,7 @@
   import { uiState } from '../stores/uiState.svelte.js';
   import { onMount } from 'svelte';
 
-  let menuRef;
+  let menuRef = $state();
 
   function handleClickOutside(event) {
     if (menuRef && !menuRef.contains(event.target)) {
@@ -19,7 +19,6 @@
   let style = $derived.by(() => {
     let x = uiState.contextMenu.x;
     let y = uiState.contextMenu.y;
-    // Simple logic, can be enhanced to detect window bounds
     return `top: ${y}px; left: ${x}px;`;
   });
 
@@ -43,14 +42,17 @@
     bind:this={menuRef}
     class="fixed z-50 min-w-[160px] bg-popover border border-border rounded-lg shadow-xl p-1 animate-in fade-in zoom-in-95 duration-100 flex flex-col"
     style={style}
+    role="menu"
+    tabindex="-1"
   >
     {#each uiState.contextMenu.actions as action}
       {#if action.separator}
-        <div class="h-[1px] bg-border my-1"></div>
+        <div class="h-[1px] bg-border my-1" role="separator"></div>
       {:else}
         <button
           class="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2 {action.danger ? 'text-destructive hover:bg-destructive/10' : 'text-popover-foreground'}"
           onclick={() => handleAction(action)}
+          role="menuitem"
         >
           {#if action.icon}
             <action.icon size={14} />

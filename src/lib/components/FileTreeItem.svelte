@@ -48,12 +48,76 @@
   }
 
   function handleContextMenu(e) {
+    e.preventDefault();
+    const refresh = () => invoke('list_directory', { path: item.path.substring(0, item.path.lastIndexOf('/')) }).then(() => {
+        // Ideally trigger a global or parent refresh. 
+        // Since we are recursive, refreshing 'children' is hard if we are the child. 
+        // We will settle for invoking list_directory to ensure backend is sync, 
+        // but UI update relies on re-expanding or global reload.
+        // A better approach in a real app is a FileSystemWatcher event.
+    });
+
     const actions = [
-      { label: 'New File', icon: FilePlus, fn: (i) => console.log('New File in', i.path) },
-      { label: 'New Folder', icon: Folder, fn: (i) => console.log('New Folder in', i.path) },
+      { 
+        label: 'New File', 
+        icon: FilePlus, 
+        fn: async (i) => {
+            const name = window.prompt("Enter file name:");
+            if (!name) return;
+            const dir = i.is_dir ? i.path : i.path.substring(0, i.path.lastIndexOf('/'));
+            const path = `${dir}/${name}`;
+            try {
+                await invoke('create_file', { path, content: '' });
+                // Attempt to refresh immediate parent if possible, or just log success
+            } catch (err) {
+                alert(`Error: ${err}`);
+            }
+        } 
+      },
+      { 
+        label: 'New Folder', 
+        icon: Folder, 
+        fn: async (i) => {
+            const name = window.prompt("Enter folder name:");
+            if (!name) return;
+            const dir = i.is_dir ? i.path : i.path.substring(0, i.path.lastIndexOf('/'));
+            const path = `${dir}/${name}`;
+            try {
+                await invoke('create_directory', { path });
+            } catch (err) {
+                alert(`Error: ${err}`);
+            }
+        } 
+      },
       { separator: true },
-      { label: 'Rename', icon: Pencil, fn: (i) => console.log('Rename', i.path) },
-      { label: 'Delete', icon: Trash2, danger: true, fn: (i) => console.log('Delete', i.path) },
+      { 
+        label: 'Rename', 
+        icon: Pencil, 
+        fn: async (i) => {
+            const name = window.prompt("Enter new name:", i.name);
+            if (!name || name === i.name) return;
+            const parent = i.path.substring(0, i.path.lastIndexOf('/'));
+            const newPath = `${parent}/${name}`;
+            try {
+                await invoke('rename_path', { oldPath: i.path, newPath });
+            } catch (err) {
+                alert(`Error: ${err}`);
+            }
+        } 
+      },
+      { 
+        label: 'Delete', 
+        icon: Trash2, 
+        danger: true, 
+        fn: async (i) => {
+            if (!confirm(`Delete ${i.name}?`)) return;
+            try {
+                await invoke('delete_path', { path: i.path });
+            } catch (err) {
+                alert(`Error: ${err}`);
+            }
+        } 
+      },
     ];
     uiState.openContextMenu(e, item, actions);
   }

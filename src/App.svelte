@@ -36,7 +36,6 @@
       const configExists = await invoke('file_exists', { path: 'karsa_config.json' });
       showOnboarding = !configExists;
     } catch (e) {
-      // Mock check
       showOnboarding = !localStorage.getItem('karsa_ai_config');
     }
   });
@@ -57,24 +56,25 @@
   {#if showOnboarding}
     <Onboarding onComplete={() => showOnboarding = false} />
   {:else}
-    <!-- Top Menu Bar -->
+    <!-- Top Menu Bar (Fixed Height) -->
     <MenuBar onOpenSettings={() => showSettings = true} />
 
-    <div class="flex-1 flex overflow-hidden relative">
-      <!-- Left: Activity Bar -->
+    <!-- Main Content Area (Flex Grow - Fills remaining space) -->
+    <div class="flex-1 flex overflow-hidden relative min-h-0">
+      <!-- Left: Activity Bar (Fixed Width) -->
       <ActivityBar bind:activeView bind:activeMode onChatToggle={toggleChat} onOpenSettings={() => showSettings = true} />
       
       {#if activeMode === 'editor'}
         <!-- EDITOR MODE LAYOUT -->
-        <div class="flex-1 flex overflow-hidden animate-in fade-in duration-300">
+        <div class="flex-1 flex overflow-hidden animate-in fade-in duration-200">
           
           <!-- Resizable Sidebar -->
           {#if activeView === 'explorer'}
             <ResizablePanel 
               side="left" 
-              initialSize={configStore.settings.layout.sidebarWidth || 280} 
+              initialSize={configStore.settings.layout.sidebarWidth || 260} 
               minSize={200} 
-              maxSize={500}
+              maxSize={400}
               className="bg-muted/5 border-r border-border shadow-sm z-10"
             >
               <Sidebar />
@@ -85,8 +85,8 @@
               initialSize={300}
               className="bg-muted/5 border-r border-border p-4 text-sm text-muted-foreground"
             >
-              <div class="font-medium text-foreground mb-2">Search</div>
-              <input type="text" placeholder="Search files..." class="w-full bg-background border border-border rounded px-2 py-1" />
+              <div class="font-medium text-foreground mb-2 text-xs uppercase tracking-wider">Search</div>
+              <input type="text" placeholder="Search files..." class="w-full bg-background border border-border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none" />
             </ResizablePanel>
           {/if}
           
@@ -94,30 +94,34 @@
           <div class="flex-1 flex flex-col min-w-0 bg-background relative z-0">
              
              <!-- Top Half: Editor/Dashboard -->
-             {#if activeView === 'dashboard' && fsStore.openFiles.length === 0}
-                <div class="flex-1 overflow-hidden">
+             <div class="flex-1 flex flex-col min-h-0 relative overflow-hidden">
+               {#if activeView === 'dashboard' && fsStore.openFiles.length === 0}
                   <Dashboard />
-                </div>
-             {:else}
-                <div class="flex-1 flex flex-col min-h-0 relative">
-                  <TabBar />
-                  <div class="flex-1 relative bg-background">
-                    <Editor />
-                    <!-- Empty State -->
-                    {#if !fsStore.activeFile}
-                      <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-20 select-none">
-                         <div class="text-6xl font-bold tracking-tighter text-foreground">Karsa</div>
-                         <div class="text-xs tracking-[0.5em] uppercase mt-4 text-muted-foreground">Intelligent IDE</div>
-                      </div>
-                    {/if}
-                  </div>
-                </div>
-             {/if}
+               {:else}
+                  {#if activeView === 'dashboard'}
+                     <Dashboard />
+                  {:else}
+                     <div class="flex-1 flex flex-col h-full overflow-hidden">
+                        <TabBar />
+                        <div class="flex-1 relative bg-background">
+                          <Editor />
+                          <!-- Empty State -->
+                          {#if !fsStore.activeFile}
+                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-20 select-none">
+                               <div class="text-6xl font-bold tracking-tighter text-foreground">Karsa</div>
+                               <div class="text-[10px] tracking-[0.5em] uppercase mt-4 text-muted-foreground">Intelligent IDE</div>
+                            </div>
+                          {/if}
+                        </div>
+                     </div>
+                  {/if}
+               {/if}
+             </div>
 
              <!-- Bottom Half: Resizable Terminal -->
              {#if showTerminal}
-               <div class="h-1 bg-border hover:bg-primary/50 cursor-row-resize transition-colors z-20"></div>
-               <div class="h-[200px] shrink-0 bg-background border-t border-border">
+               <div class="h-[1px] bg-border hover:bg-primary/50 cursor-row-resize transition-colors z-20"></div>
+               <div class="h-[200px] min-h-[100px] shrink-0 bg-background border-t border-border flex flex-col">
                   <Terminal />
                </div>
              {/if}
@@ -127,9 +131,9 @@
           {#if showChat}
             <ResizablePanel 
               side="right" 
-              initialSize={configStore.settings.layout.chatWidth || 400} 
+              initialSize={configStore.settings.layout.chatWidth || 350} 
               minSize={300} 
-              maxSize={800}
+              maxSize={600}
               className="border-l border-border bg-background shadow-2xl z-20"
             >
                <ChatPanel onClose={toggleChat} />
@@ -139,23 +143,26 @@
       
       {:else}
         <!-- AGENT MODE LAYOUT -->
-        <div class="flex-1 overflow-hidden bg-background relative z-0 animate-in zoom-in-95 duration-300">
+        <div class="flex-1 overflow-hidden bg-background relative z-0 animate-in zoom-in-95 duration-200">
            <AgentView />
         </div>
       {/if}
     </div>
     
-    <!-- Status Bar (Optional) -->
-    <div class="h-6 bg-primary text-primary-foreground flex items-center px-3 text-[10px] select-none justify-between z-30">
+    <!-- Status Bar (Fixed Height, Always Visible) -->
+    <div class="h-6 min-h-[24px] bg-primary text-primary-foreground flex items-center px-3 text-[10px] select-none justify-between z-30 shrink-0 border-t border-primary-foreground/10">
        <div class="flex items-center gap-3">
-          <span class="font-bold">main*</span>
-          <span class="opacity-80">0 errors, 0 warnings</span>
+          <span class="font-bold flex items-center gap-1.5">
+             <div class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div>
+             main*
+          </span>
+          <span class="opacity-80">0 errors</span>
        </div>
        <div class="flex items-center gap-3">
           <span class="opacity-80">Ln 12, Col 45</span>
           <span class="opacity-80">UTF-8</span>
-          <span class="opacity-80">JavaScript</span>
-          <button class="hover:bg-primary-foreground/20 px-1 rounded" onclick={toggleTerminal} title="Toggle Terminal">
+          <span class="opacity-80 font-mono">JavaScript</span>
+          <button class="hover:bg-white/20 px-1.5 py-0.5 rounded transition-colors flex items-center gap-1" onclick={toggleTerminal} title="Toggle Terminal">
              Terminal
           </button>
        </div>

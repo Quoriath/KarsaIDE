@@ -34,12 +34,27 @@
     }
     configStore.save();
   }
+  
+  function handleKeydown(e) {
+    if (e.key === 'Escape') onClose();
+  }
 </script>
 
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200" onclick={onClose}>
+<div 
+  class="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200" 
+  role="dialog"
+  aria-modal="true"
+  tabindex="-1"
+>
+  <!-- Overlay click handler needs to be on a separate element or handled carefully -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="absolute inset-0" onclick={onClose}></div>
+
   <div 
-    class="w-[900px] h-[650px] bg-background border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
-    onclick={(e) => e.stopPropagation()}
+    class="w-[900px] h-[650px] bg-background border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative z-10"
+    role="document"
+    onkeydown={handleKeydown}
   >
     <!-- Header -->
     <div class="h-16 px-6 border-b border-border flex items-center justify-between bg-muted/10 shrink-0">
@@ -80,7 +95,7 @@
             <section>
               <h3 class="text-base font-medium mb-4 pb-2 border-b border-border">Appearance</h3>
               <div class="space-y-4">
-                <label class="text-sm text-muted-foreground">Color Theme</label>
+                <span class="text-sm text-muted-foreground block mb-2">Color Theme</span>
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {#each Object.entries(themes) as [key, theme]}
                     <button
@@ -116,10 +131,10 @@
                <h3 class="text-base font-medium mb-4 pb-2 border-b border-border">Files</h3>
                <div class="flex items-center justify-between p-3 border border-border rounded-lg bg-card/30">
                   <div class="space-y-0.5">
-                     <div class="text-sm font-medium">Auto Save</div>
+                     <label for="auto-save" class="text-sm font-medium cursor-pointer">Auto Save</label>
                      <div class="text-xs text-muted-foreground">Save changes automatically after delay</div>
                   </div>
-                  <input type="checkbox" checked class="accent-primary w-4 h-4" />
+                  <input id="auto-save" type="checkbox" checked class="accent-primary w-4 h-4" />
                </div>
             </section>
           </div>
@@ -130,8 +145,9 @@
                 <h3 class="text-base font-medium mb-4 pb-2 border-b border-border">Typography</h3>
                 <div class="space-y-4">
                    <div class="grid gap-2">
-                      <label class="text-sm font-medium">Font Family</label>
+                      <label for="font-family" class="text-sm font-medium">Font Family</label>
                       <select 
+                        id="font-family"
                         class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:border-primary outline-none focus:ring-1 focus:ring-primary/20"
                         bind:value={configStore.settings.editor.fontFamily}
                         onchange={() => configStore.save()}
@@ -144,9 +160,10 @@
                    </div>
                    
                    <div class="grid gap-2">
-                      <label class="text-sm font-medium">Font Size: {configStore.settings.editor.fontSize}px</label>
+                      <label for="font-size" class="text-sm font-medium">Font Size: {configStore.settings.editor.fontSize}px</label>
                       <div class="flex items-center gap-4">
                          <input 
+                           id="font-size"
                            type="range" min="10" max="24" step="1"
                            bind:value={configStore.settings.editor.fontSize}
                            onchange={() => configStore.save()}
@@ -161,8 +178,9 @@
                 <h3 class="text-base font-medium mb-4 pb-2 border-b border-border">Display</h3>
                 <div class="space-y-3">
                    <div class="flex items-center justify-between py-2 border-b border-border/50">
-                      <span class="text-sm">Minimap</span>
+                      <label for="minimap" class="text-sm cursor-pointer">Minimap</label>
                       <input 
+                        id="minimap"
                         type="checkbox" 
                         bind:checked={configStore.settings.editor.minimap}
                         onchange={() => configStore.save()}
@@ -171,8 +189,9 @@
                    </div>
                    
                    <div class="flex items-center justify-between py-2 border-b border-border/50">
-                      <span class="text-sm">Word Wrap</span>
+                      <label for="word-wrap" class="text-sm cursor-pointer">Word Wrap</label>
                       <select 
+                        id="word-wrap"
                         class="bg-transparent text-sm border-none outline-none text-right"
                         bind:value={configStore.settings.editor.wordWrap}
                         onchange={() => configStore.save()}
@@ -184,8 +203,8 @@
                    </div>
 
                    <div class="flex items-center justify-between py-2 border-b border-border/50">
-                      <span class="text-sm">Line Numbers</span>
-                      <select class="bg-transparent text-sm border-none outline-none text-right">
+                      <label for="line-numbers" class="text-sm cursor-pointer">Line Numbers</label>
+                      <select id="line-numbers" class="bg-transparent text-sm border-none outline-none text-right">
                          <option value="on">On</option>
                          <option value="off">Off</option>
                          <option value="relative">Relative</option>
@@ -202,7 +221,7 @@
                  
                  <div class="space-y-4">
                     <div class="grid gap-2">
-                       <label class="text-sm font-medium">AI Provider</label>
+                       <span class="text-sm font-medium">AI Provider</span>
                        <div class="grid grid-cols-3 gap-3">
                           {#each ['kilo', 'openai', 'ollama'] as p}
                              <button 
@@ -217,8 +236,9 @@
                     </div>
 
                     <div class="grid gap-2">
-                       <label class="text-sm font-medium">API Endpoint (Base URL)</label>
+                       <label for="api-url" class="text-sm font-medium">API Endpoint (Base URL)</label>
                        <input 
+                         id="api-url"
                          type="text" 
                          bind:value={configStore.settings.ai.baseUrl}
                          onchange={() => configStore.save()}
@@ -227,9 +247,10 @@
                     </div>
 
                     <div class="grid gap-2">
-                       <label class="text-sm font-medium">API Key</label>
+                       <label for="api-key" class="text-sm font-medium">API Key</label>
                        <div class="relative">
                           <input 
+                            id="api-key"
                             type="password" 
                             bind:value={configStore.settings.ai.apiKey}
                             onchange={() => configStore.save()}
@@ -248,8 +269,9 @@
               <section>
                  <h3 class="text-base font-medium mb-4 pb-2 border-b border-border">Model Defaults</h3>
                  <div class="grid gap-2">
-                    <label class="text-sm font-medium">Custom Models (CSV)</label>
+                    <label for="custom-models" class="text-sm font-medium">Custom Models (CSV)</label>
                     <textarea 
+                      id="custom-models"
                       class="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono min-h-[80px]"
                       placeholder="model-id-1, model-id-2"
                       value={Array.isArray(configStore.settings.ai.models) ? configStore.settings.ai.models.join(', ') : configStore.settings.ai.models}
