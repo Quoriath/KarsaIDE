@@ -33,6 +33,8 @@
   let streamingReasoning = $state('');
   let streamingSegments = $state([]); // Array of {type: 'text'|'tool', content/name/args/result}
   let currentSegmentText = $state(''); // Accumulate text before tool
+  let isToolExecuting = $state(false); // Track if any tool is running
+  let isThinkingComplete = $state(false); // Track if thinking is done
   
   // UI State
   let editingTitle = $state(false);
@@ -71,6 +73,7 @@
     const unlistenReasoningComplete = await listen('ai-reasoning-complete', (event) => {
       const reasoning = typeof event.payload === 'string' ? event.payload : '';
       streamingReasoning = reasoning;
+      isThinkingComplete = true; // Thinking done - can collapse
       scrollToBottom();
     });
 
@@ -96,6 +99,7 @@
         error: null
       }];
       
+      isToolExecuting = true;
       scrollToBottom();
     });
 
@@ -114,6 +118,8 @@
         }
         return seg;
       });
+      
+      isToolExecuting = false;
       scrollToBottom();
     });
 
@@ -149,9 +155,9 @@
       streamingReasoning = '';
       streamingSegments = [];
       currentSegmentText = '';
-      streamingSegments = [];
-      currentSegmentText = '';
       isLoading = false;
+      isToolExecuting = false;
+      isThinkingComplete = false;
       scrollToBottom();
     });
 
@@ -339,8 +345,10 @@
     // Reset streaming state
     streamingContent = ''; 
     streamingReasoning = '';
-    streamingSegments = []; currentSegmentText = "";
-    
+    streamingSegments = [];
+    currentSegmentText = '';
+    isToolExecuting = false;
+    isThinkingComplete = false;
     
     messages = [...messages, { role: 'user', content: userMessage, timestamp }];
     isLoading = true;
@@ -383,7 +391,7 @@
         custom_models: []
       };
       
-      await invoke('send_agent_message_stream', { messages: msgs, config: config });
+      await invoke('send_agent_message_stream', { messages: msgs, config: config, workspace: cwd || null });
     } catch (e) {
       messages = [...messages, { 
         role: 'assistant', 
@@ -429,7 +437,7 @@
         custom_models: []
       };
       
-      await invoke('send_agent_message_stream', { messages: msgs, config: config });
+      await invoke('send_agent_message_stream', { messages: msgs, config: config, workspace: cwd || null });
     } catch (e) {
       messages = [...messages, { 
         role: 'assistant', 
@@ -596,7 +604,7 @@
               
               {#if msg.role === 'assistant'}
                 {#if msg.reasoning}
-                  <ThinkingBlock content={msg.reasoning} isStreaming={false} />
+                  <ThinkingBlock content={msg.reasoning} isStreaming={false} isThinkingComplete={true} isToolExecuting={false} />
                 {/if}
                 
                 <!-- Render segments inline -->
@@ -684,7 +692,7 @@
                  </div>
                  
                  {#if streamingReasoning}
-                   <ThinkingBlock content={streamingReasoning} isStreaming={true} />
+                   <ThinkingBlock content={streamingReasoning} isStreaming={true} isThinkingComplete={isThinkingComplete} isToolExecuting={isToolExecuting} />
                  {/if}
 
                  <!-- Render segments inline -->

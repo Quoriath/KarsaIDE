@@ -79,7 +79,9 @@
         xterm.write(text);
       });
     } catch (err) {
-      xterm.write(`\r\n\x1b[31mError spawning terminal: ${err}\x1b[0m\r\n`);
+      xterm.write(`\r
+\x1b[31mError spawning terminal: ${err}\x1b[0m\r
+`);
     }
 
     // Fit on resize

@@ -7,6 +7,7 @@
   import { fsStore } from './lib/stores/fileSystem.svelte.js';
   import { themeStore } from './lib/stores/theme.svelte.js';
   import { configStore } from './lib/stores/config.svelte.js';
+  import { uiState } from './lib/stores/uiState.svelte.js';
 
   // Components
   import MenuBar from './lib/components/MenuBar.svelte';
@@ -30,8 +31,14 @@
   let activeMode = $state('editor'); 
   let showTerminal = $state(configStore.settings.layout.bottomPanelVisible);
   let showSettings = $state(false);
+  let settingsTab = $state('general');
   let terminalHeight = $state(configStore.settings.layout.bottomPanelHeight || 250);
   let isResizingTerminal = $state(false);
+
+  function openSettings(tab = 'general') {
+    settingsTab = tab;
+    showSettings = true;
+  }
 
   function startTerminalResize(e) {
     isResizingTerminal = true;
@@ -59,9 +66,17 @@
   }
 
   onMount(async () => {
-    themeStore.applyTheme(configStore.settings.theme || 'karsa-dark');
+    themeStore.setTheme(configStore.settings.theme || 'karsa-dark');
+    if (configStore.settings.appearance?.mode) {
+      themeStore.setMode(configStore.settings.appearance.mode);
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleThemeChange = () => {
+      if (themeStore.mode === 'system') themeStore.applyTheme(themeStore.activeTheme);
+    };
+    mediaQuery.addEventListener('change', handleThemeChange);
     
-    // Listeners
     const u1 = await listen('terminal-state-changed', (e) => {
       showTerminal = e.payload;
       configStore.updateLayout({ bottomPanelVisible: showTerminal });
@@ -71,13 +86,14 @@
       configStore.updateLayout({ chatVisible: showChat });
     });
 
-    // Check if config exists and has API key
     try {
       const config = await invoke('get_ai_config');
       showOnboarding = !config.ai?.api_key;
     } catch (e) {
       showOnboarding = true;
     }
+
+    return () => mediaQuery.removeEventListener('change', handleThemeChange);
   });
 
   async function toggleChat() {
@@ -93,54 +109,44 @@
   }
 </script>
 
-<!-- Main Container: Full Screen, No Window Scroll -->
 <main class="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden font-sans selection:bg-primary/30 antialiased">
   
   {#if showOnboarding}
     <Onboarding onComplete={() => showOnboarding = false} />
   {:else}
-    <!-- Custom Window Title Bar -->
     <TitleBar />
 
-    <!-- 1. HEADER (Fixed Height, Shrink 0) -->
-    <div class="shrink-0 z-50 pt-8">
-      <MenuBar onOpenSettings={() => showSettings = true} />
+    <div class="shrink-0 z-[60] pt-8">
+      <MenuBar onOpenSettings={openSettings} />
     </div>
 
-    <!-- 2. MIDDLE (Flex 1, Min Height 0 to allow internal scrolling) -->
     <div class="flex-1 flex overflow-hidden relative min-h-0">
       
-      <!-- Activity Bar -->
       <div class="shrink-0 z-40 h-full">
         <ActivityBar 
           bind:activeView 
           bind:activeMode 
           onChatToggle={toggleChat} 
-          onOpenSettings={() => showSettings = true} 
+          onOpenSettings={openSettings} 
           onTerminalToggle={toggleTerminal}
         />
       </div>
       
       {#if activeMode === 'editor'}
-        <!-- EDITOR LAYOUT -->
-        <div class="flex-1 flex overflow-hidden animate-in fade-in duration-200">
+        <div class="flex-1 flex overflow-hidden">
           
-          <!-- Sidebar (Resizable) -->
           {#if activeView === 'explorer'}
-            <ResizablePanel side="left" initialSize={260} minSize={200} maxSize={400} className="bg-muted/5 border-r border-border z-30">
+            <ResizablePanel side="left" initialSize={240} minSize={180} maxSize={400} className="bg-muted/5 border-r border-border/40 z-30">
               <FileExplorer />
             </ResizablePanel>
           {:else if activeView === 'search'}
-            <ResizablePanel side="left" initialSize={300} className="bg-muted/5 border-r border-border p-4 text-sm text-muted-foreground z-30">
-              <div class="font-medium text-foreground mb-2 text-xs uppercase tracking-wider">Search</div>
-              <input type="text" placeholder="Search files..." class="w-full bg-background border border-border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none" />
+            <ResizablePanel side="left" initialSize={280} className="bg-muted/5 border-r border-border/40 p-4 text-sm text-muted-foreground z-30">
+              <div class="font-bold text-foreground mb-3 text-[10px] uppercase tracking-widest opacity-50">Global Search</div>
+              <input type="text" placeholder="Find in files..." class="w-full bg-muted/20 border border-border/40 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-primary/20 outline-none" />
             </ResizablePanel>
           {/if}
           
-          <!-- Center Content (Flex Col) -->
           <div class="flex-1 flex flex-col min-w-0 bg-background relative z-0">
-             
-             <!-- Upper Part (Dashboard/Editor) -->
              <div class="flex-1 flex flex-col min-h-0 relative overflow-hidden">
                {#if activeView === 'dashboard' && fsStore.openFiles.length === 0}
                   <Dashboard />
@@ -155,9 +161,8 @@
                         <div class="flex-1 relative bg-background min-h-0">
                           <Editor />
                           {#if !fsStore.activeFile}
-                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-20 select-none">
-                               <div class="text-6xl font-bold tracking-tighter text-foreground">Karsa</div>
-                               <div class="text-[10px] tracking-[0.5em] uppercase mt-4 text-muted-foreground">Intelligent IDE</div>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-[0.03] select-none">
+                               <div class="text-[120px] font-black tracking-tighter text-foreground">KARSA</div>
                             </div>
                           {/if}
                         </div>
@@ -166,78 +171,53 @@
                {/if}
              </div>
 
-             <!-- Lower Part (Terminal) - Resizable -->
              {#if showTerminal}
                <div class="shrink-0 z-20 terminal-panel" style="height: {terminalHeight}px">
-                  <div 
-                    class="h-[4px] bg-border hover:bg-primary/50 cursor-row-resize transition-colors active:bg-primary"
-                    onmousedown={startTerminalResize}
-                  ></div>
-                  <div class="h-full bg-background border-t border-border flex flex-col overflow-hidden">
+                  <div class="h-[2px] bg-border hover:bg-primary/50 cursor-row-resize transition-colors" onmousedown={startTerminalResize}></div>
+                  <div class="h-full bg-background/50 backdrop-blur-xl border-t border-border/40 flex flex-col overflow-hidden">
                       <Terminal onClose={toggleTerminal} />
                   </div>
                </div>
              {/if}
           </div>
           
-          <!-- Chat Panel (Right) -->
           {#if showChat}
-            <ResizablePanel side="right" initialSize={350} minSize={300} maxSize={600} className="border-l border-border bg-background z-20">
+            <ResizablePanel side="right" initialSize={320} minSize={280} maxSize={600} className="border-l border-border/40 bg-background/50 backdrop-blur-xl z-20">
                <ChatPanel onClose={toggleChat} />
             </ResizablePanel>
           {/if}
         </div>
       
       {:else}
-        <!-- AGENT LAYOUT -->
-        <div class="flex-1 overflow-hidden bg-background relative z-0 animate-in zoom-in-95 duration-200">
+        <div class="flex-1 overflow-hidden bg-background relative z-0 animate-in zoom-in-95 duration-300">
            <AgentView />
         </div>
       {/if}
     </div>
     
-    <!-- 3. FOOTER (Fixed Height, Shrink 0, Sticky Bottom) -->
-    <div class="h-6 min-h-[24px] shrink-0 bg-background/95 backdrop-blur border-t border-border flex items-center px-3 text-[10px] select-none justify-between z-50 text-muted-foreground relative">
-       <div class="flex items-center gap-3">
-          <button class="hover:text-foreground flex items-center gap-1.5 transition-colors">
-             <div class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
-             <span class="font-semibold text-foreground">main*</span>
-          </button>
-          <span class="hover:text-foreground cursor-pointer transition-colors hidden sm:inline">0 errors</span>
-       </div>
+    <div class="h-6 min-h-[24px] shrink-0 bg-background/80 backdrop-blur border-t border-border/20 flex items-center px-3 text-[9px] select-none justify-between z-50 text-muted-foreground/60 font-bold uppercase tracking-tighter">
        <div class="flex items-center gap-4">
-          <span class="hover:text-foreground cursor-pointer transition-colors hidden sm:inline">Ln 12, Col 45</span>
-          <span class="hover:text-foreground cursor-pointer transition-colors hidden sm:inline">UTF-8</span>
-          <span class="hover:text-foreground cursor-pointer transition-colors text-primary font-medium">JavaScript</span>
-          <button 
-            class={showTerminal ? "text-primary font-medium" : "hover:text-foreground transition-colors"} 
-            onclick={toggleTerminal} 
-            title="Toggle Terminal"
-          >
-             Terminal
+          <button class="hover:text-primary flex items-center gap-1.5 transition-colors">
+             <div class="w-1 h-1 rounded-full bg-primary animate-pulse shadow-[0_0_5px_var(--primary)]"></div>
+             <span class="text-foreground/80">main*</span>
           </button>
+          <span class="hover:text-foreground cursor-pointer transition-colors hidden sm:inline">0 Issues</span>
+       </div>
+       <div class="flex items-center gap-5">
+          <span class="hover:text-foreground cursor-pointer transition-colors hidden sm:inline">Ln {uiState.editorStatus.line}, Col {uiState.editorStatus.column}</span>
+          <span class="hover:text-foreground cursor-pointer transition-colors text-primary uppercase font-black">{uiState.editorStatus.language}</span>
+          <button class={cn("transition-colors", showTerminal ? "text-primary" : "hover:text-foreground")} onclick={toggleTerminal}>Terminal</button>
        </div>
     </div>
   {/if}
 
   {#if showSettings}
-    <Settings onClose={() => showSettings = false} />
+    <Settings initialTab={settingsTab} onClose={() => showSettings = false} />
   {/if}
 </main>
 
 <style>
-  :global(body) {
-    user-select: none;
-  }
-  
-  :global(body.resizing-terminal) {
-    cursor: row-resize !important;
-    user-select: none !important;
-  }
-  
-  :global(body.resizing-terminal *) {
-    cursor: row-resize !important;
-    pointer-events: none !important;
-  }
+  :global(body) { user-select: none; }
+  :global(body.resizing-terminal) { cursor: row-resize !important; }
+  :global(body.resizing-terminal *) { pointer-events: none !important; }
 </style>
-

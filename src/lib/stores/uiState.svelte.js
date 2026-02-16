@@ -7,6 +7,17 @@ class UIState {
     actions: []
   });
 
+  editorStatus = $state({
+    line: 1,
+    column: 1,
+    selectionCount: 0,
+    language: 'Plain Text'
+  });
+
+  updateEditorStatus(status) {
+    this.editorStatus = { ...this.editorStatus, ...status };
+  }
+
   openContextMenu(e, item, actions) {
     e.preventDefault();
     this.contextMenu = {

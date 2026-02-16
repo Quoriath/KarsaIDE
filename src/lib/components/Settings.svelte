@@ -1,13 +1,20 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
   import { configStore } from '../stores/config.svelte.js';
-  import { X, Save, RefreshCw, Settings as SettingsIcon, Brain } from 'lucide-svelte';
+  import { themeStore, themes } from '../stores/theme.svelte.js';
+  import { 
+    X, Save, RefreshCw, Settings as SettingsIcon, Brain, 
+    Palette, Monitor, Moon, Sun, Shield, Cpu, Database, 
+    Globe, Key, Layout, Check, Info
+  } from 'lucide-svelte';
   import IntelligenceTab from './IntelligenceTab.svelte';
+  import { cn } from '../utils.js';
 
-  let { onClose } = $props();
+  let { onClose, initialTab = 'general' } = $props();
   
-  let activeTab = $state('general');
+  let activeTab = $state(initialTab);
 
+  // AI Settings State
   let provider = $state(configStore.settings.ai.provider);
   let apiKey = $state(configStore.settings.ai.apiKey);
   let baseUrl = $state(configStore.settings.ai.baseUrl);
@@ -16,15 +23,18 @@
   let isFetchingModels = $state(false);
   let isSaving = $state(false);
 
+  const tabs = [
+    { id: 'general', label: 'AI Settings', icon: Brain },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'intelligence', label: 'Intelligence', icon: Cpu },
+    { id: 'advanced', label: 'Advanced', icon: Database },
+  ];
+
   async function fetchModels() {
     if (!apiKey) return;
-    
     isFetchingModels = true;
     try {
-      availableModels = await invoke('fetch_kilo_models', {
-        apiKey,
-        forceRefresh: true
-      });
+      availableModels = await invoke('fetch_kilo_models', { apiKey, forceRefresh: true });
     } catch (e) {
       console.error('Failed to fetch models:', e);
     } finally {
@@ -42,7 +52,11 @@
         selectedModel,
         models: availableModels.length > 0 ? availableModels.map(m => m.id) : configStore.settings.ai.models
       });
-      
+      // Save theme settings as well
+      configStore.updateSettings({ 
+        theme: themeStore.activeTheme,
+        appearance: { mode: themeStore.mode }
+      });
       onClose?.();
     } catch (e) {
       console.error('Failed to save settings:', e);
@@ -52,275 +66,235 @@
   }
 </script>
 
-<div class="settings-overlay" onclick={onClose}>
-  <div class="settings-panel" onclick={(e) => e.stopPropagation()}>
-    <div class="settings-header">
-      <h2>Settings</h2>
-      <button class="close-btn" onclick={onClose}>
-        <X size={20} />
-      </button>
-    </div>
+<div 
+  class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+  onclick={onClose}
+>
+  <div 
+    class="w-[90%] max-w-4xl h-[80vh] bg-background border border-border shadow-2xl rounded-2xl flex overflow-hidden animate-in zoom-in-95 duration-300"
+    onclick={(e) => e.stopPropagation()}
+  >
+    <!-- Sidebar Tabs -->
+    <aside class="w-64 border-r border-border bg-muted/10 flex flex-col shrink-0">
+      <div class="p-6 border-b border-border/50">
+        <h2 class="text-lg font-bold flex items-center gap-2 text-foreground">
+          <SettingsIcon size={20} class="text-primary" />
+          Settings
+        </h2>
+      </div>
+      
+      <nav class="flex-1 p-2 space-y-1">
+        {#each tabs as tab}
+          <button
+            class={cn(
+              "w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+              activeTab === tab.id 
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" 
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+            onclick={() => activeTab = tab.id}
+          >
+            <tab.icon size={18} />
+            {tab.label}
+          </button>
+        {/each}
+      </nav>
 
-    <!-- Tabs -->
-    <div class="flex border-b border-border">
-      <button
-        class="px-4 py-2 text-sm flex items-center gap-2 {activeTab === 'general' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}"
-        onclick={() => activeTab = 'general'}
-      >
-        <SettingsIcon size={14} />
-        General
-      </button>
-      <button
-        class="px-4 py-2 text-sm flex items-center gap-2 {activeTab === 'intelligence' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}"
-        onclick={() => activeTab = 'intelligence'}
-      >
-        <Brain size={14} />
-        Intelligence
-      </button>
-    </div>
+      <div class="p-4 border-t border-border/50 text-[10px] text-muted-foreground uppercase tracking-widest font-bold text-center">
+        Karsa IDE v0.1.0-alpha
+      </div>
+    </aside>
 
-    <div class="settings-content">
-      {#if activeTab === 'general'}
-      <section>
-        <h3>AI Provider</h3>
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col min-w-0 bg-background relative">
+      <!-- Header -->
+      <div class="h-14 border-b border-border flex items-center justify-between px-6 bg-background/50 backdrop-blur shrink-0">
+        <span class="text-sm font-semibold capitalize text-foreground">{activeTab} Configuration</span>
+        <button 
+          onclick={onClose}
+          class="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <!-- Scrollable Content -->
+      <div class="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-thin">
         
-        <label>
-          <span>Provider</span>
-          <select bind:value={provider}>
-            <option value="kilo">Kilo Code</option>
-            <option value="ollama">Ollama</option>
-            <option value="openai">OpenAI</option>
-            <option value="custom">Custom</option>
-          </select>
-        </label>
+        {#if activeTab === 'general'}
+          <div class="space-y-6 animate-in slide-in-from-right-4 duration-300">
+            <div class="grid gap-4">
+              <label class="space-y-2">
+                <span class="text-xs font-bold text-muted-foreground uppercase tracking-wider">AI Provider</span>
+                <select 
+                  bind:value={provider}
+                  class="w-full bg-muted/30 border border-border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-foreground"
+                >
+                  <option value="kilo">Kilo AI (Recommended)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="ollama">Ollama (Local)</option>
+                </select>
+              </label>
 
-        <label>
-          <span>API Key</span>
-          <input 
-            type="password" 
-            bind:value={apiKey}
-            placeholder="Enter your API key"
-          />
-        </label>
+              <label class="space-y-2">
+                <span class="text-xs font-bold text-muted-foreground uppercase tracking-wider">API Key</span>
+                <div class="relative">
+                  <Key size={14} class="absolute left-3 top-3 text-muted-foreground/50" />
+                  <input 
+                    type="password" 
+                    bind:value={apiKey}
+                    placeholder="Enter your API key..."
+                    class="w-full bg-muted/30 border border-border rounded-xl pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-foreground"
+                  />
+                </div>
+              </label>
 
-        <label>
-          <span>Base URL</span>
-          <input 
-            type="text" 
-            bind:value={baseUrl}
-            placeholder="https://api.example.com"
-          />
-        </label>
+              <label class="space-y-2">
+                <span class="text-xs font-bold text-muted-foreground uppercase tracking-wider">Base URL</span>
+                <div class="relative">
+                  <Globe size={14} class="absolute left-3 top-3 text-muted-foreground/50" />
+                  <input 
+                    type="text" 
+                    bind:value={baseUrl}
+                    placeholder="https://api.kilo.ai/v1"
+                    class="w-full bg-muted/30 border border-border rounded-xl pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-foreground"
+                  />
+                </div>
+              </label>
 
-        <label>
-          <span>Model</span>
-          <div class="model-selector">
-            <select bind:value={selectedModel}>
-              {#each availableModels.length > 0 ? availableModels : configStore.settings.ai.models as model}
-                <option value={typeof model === 'string' ? model : model.id}>
-                  {typeof model === 'string' ? model : model.name || model.id}
-                </option>
-              {/each}
-            </select>
-            <button 
-              class="refresh-btn" 
-              onclick={fetchModels}
-              disabled={isFetchingModels || !apiKey}
-            >
-              <RefreshCw size={16} class={isFetchingModels ? 'spin' : ''} />
-            </button>
+              <label class="space-y-2">
+                <span class="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preferred Model</span>
+                <div class="flex gap-2">
+                  <select 
+                    bind:value={selectedModel}
+                    class="flex-1 bg-muted/30 border border-border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-foreground"
+                  >
+                    {#each availableModels.length > 0 ? availableModels : configStore.settings.ai.models as model}
+                      <option value={typeof model === 'string' ? model : model.id}>
+                        {typeof model === 'string' ? model : model.name || model.id}
+                      </option>
+                    {/each}
+                  </select>
+                  <button 
+                    onclick={fetchModels}
+                    disabled={isFetchingModels || !apiKey}
+                    class="p-2.5 bg-muted border border-border rounded-xl hover:bg-muted-foreground/10 transition-colors disabled:opacity-50 text-foreground"
+                  >
+                    <RefreshCw size={18} class={isFetchingModels ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              </label>
+            </div>
           </div>
-        </label>
-      </section>
-      {:else if activeTab === 'intelligence'}
-        <IntelligenceTab />
-      {/if}
-    </div>
 
-    {#if activeTab === 'general'}
-    <div class="settings-footer">
-      <button class="btn-secondary" onclick={onClose}>Cancel</button>
-      <button class="btn-primary" onclick={saveSettings} disabled={isSaving}>
-        <Save size={16} />
-        {isSaving ? 'Saving...' : 'Save Settings'}
-      </button>
-    </div>
-    {/if}
+        {:else if activeTab === 'appearance'}
+          <div class="space-y-8 animate-in slide-in-from-right-4 duration-300">
+            <!-- Theme Mode -->
+            <div class="space-y-4">
+              <h3 class="text-sm font-bold text-foreground">Theme Mode</h3>
+              <div class="grid grid-cols-3 gap-3">
+                {#each [
+                  { id: 'light', label: 'Light', icon: Sun },
+                  { id: 'dark', label: 'Dark', icon: Moon },
+                  { id: 'system', label: 'System', icon: Monitor }
+                ] as mode}
+                  <button
+                    onclick={() => themeStore.setMode(mode.id)}
+                    class={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
+                      themeStore.mode === mode.id 
+                        ? "border-primary bg-primary/5 text-primary" 
+                        : "border-border/50 bg-muted/20 text-muted-foreground hover:border-border hover:bg-muted/40"
+                    )}
+                  >
+                    <mode.icon size={20} />
+                    <span class="text-xs font-medium">{mode.label}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Theme Presets -->
+            <div class="space-y-4">
+              <h3 class="text-sm font-bold text-foreground">Color Palette</h3>
+              <div class="grid grid-cols-2 gap-3">
+                {#each Object.entries(themes) as [id, theme]}
+                  <button
+                    onclick={() => themeStore.setTheme(id)}
+                    class={cn(
+                      "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
+                      themeStore.activeTheme === id 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border/50 bg-muted/20 hover:border-border hover:bg-muted/40"
+                    )}
+                  >
+                    <div class="flex items-center gap-3">
+                       <div 
+                         class="w-4 h-4 rounded-full border border-white/20"
+                         style="background-color: hsl({theme.colors['--primary']})"
+                       ></div>
+                       <span class="text-xs font-medium text-foreground">{theme.name}</span>
+                    </div>
+                    {#if themeStore.activeTheme === id}
+                      <Check size={14} class="text-primary" />
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <div class="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex gap-3">
+               <Info size={18} class="text-primary shrink-0" />
+               <p class="text-[11px] text-muted-foreground leading-relaxed">
+                 Some visual changes might require a window reload to take full effect on the editor's core.
+               </p>
+            </div>
+          </div>
+
+        {:else if activeTab === 'intelligence'}
+          <div class="animate-in slide-in-from-right-4 duration-300 text-foreground">
+            <IntelligenceTab />
+          </div>
+
+        {:else if activeTab === 'advanced'}
+           <div class="flex flex-col items-center justify-center py-12 text-center space-y-4 animate-in fade-in duration-500">
+              <div class="w-16 h-16 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+                 <Shield size={32} />
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-foreground">Advanced Configuration</h4>
+                <p class="text-xs text-muted-foreground mt-1">These settings are reserved for power users.</p>
+              </div>
+              <button class="px-4 py-2 bg-muted text-foreground rounded-xl text-xs font-medium hover:bg-muted/80 transition-colors">
+                 Open Config File
+              </button>
+           </div>
+        {/if}
+      </div>
+
+      <!-- Footer Actions -->
+      <div class="p-6 border-t border-border bg-muted/5 flex items-center justify-between shrink-0">
+        <div class="text-[10px] text-muted-foreground flex items-center gap-1.5 font-medium">
+           <Shield size={12} /> Privacy: All keys are stored locally on your device.
+        </div>
+        <div class="flex gap-3">
+          <button 
+            onclick={onClose}
+            class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onclick={saveSettings}
+            disabled={isSaving}
+            class="px-6 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+          >
+            {#if isSaving} <RefreshCw size={16} class="animate-spin" /> {:else} <Save size={16} /> {/if}
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </main>
   </div>
 </div>
-
-<style>
-  .settings-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .settings-panel {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    width: 90%;
-    max-width: 600px;
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .settings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .settings-header h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    color: var(--text-primary);
-  }
-
-  .close-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0.25rem;
-    display: flex;
-    align-items: center;
-  }
-
-  .close-btn:hover {
-    color: var(--text-primary);
-  }
-
-  .settings-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1.5rem;
-  }
-
-  section {
-    margin-bottom: 2rem;
-  }
-
-  section h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1rem;
-    color: var(--text-primary);
-  }
-
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
-  label span {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-  }
-
-  input, select {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.5rem;
-    color: var(--text-primary);
-    font-size: 0.875rem;
-  }
-
-  input:focus, select:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-
-  .model-selector {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .model-selector select {
-    flex: 1;
-  }
-
-  .refresh-btn {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.5rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-  }
-
-  .refresh-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .refresh-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .settings-footer {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: flex-end;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border);
-  }
-
-  button {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-secondary {
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-  }
-
-  .btn-secondary:hover {
-    background: var(--bg-hover);
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    border: none;
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-</style>

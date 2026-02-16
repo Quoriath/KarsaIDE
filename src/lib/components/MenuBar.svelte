@@ -2,7 +2,7 @@
   import { fsStore } from '../stores/fileSystem.svelte.js';
   import { themeStore } from '../stores/theme.svelte.js';
   import { cn } from '../utils.js';
-  import { Menu, ChevronDown, Check } from 'lucide-svelte';
+  import { ChevronDown, Check, FileText, Settings, ExternalLink } from 'lucide-svelte';
 
   let { onOpenSettings } = $props();
 
@@ -11,68 +11,41 @@
 
   const menus = [
     { label: 'File', items: [
-      { label: 'New File', action: () => alert('New File') },
-      { label: 'Open File...', action: () => fsStore.openFile() },
-      { label: 'Open Folder...', action: () => fsStore.setProjectDir() },
-      { label: 'Save', action: () => fsStore.saveActiveFile() },
-      { label: 'Settings', action: () => onOpenSettings && onOpenSettings() },
-      { label: 'Exit', action: () => window.close() },
-    ]},
-    { label: 'Edit', items: [
-      { label: 'Undo', action: () => alert('Undo') },
-      { label: 'Redo', action: () => alert('Redo') },
-      { label: 'Cut', action: () => alert('Cut') },
-      { label: 'Copy', action: () => alert('Copy') },
-      { label: 'Paste', action: () => alert('Paste') },
+      { label: 'New File', shortcut: 'Ctrl+N', action: () => alert('New File') },
+      { label: 'Open File...', shortcut: 'Ctrl+O', action: () => fsStore.openFile() },
+      { label: 'Open Folder...', shortcut: 'Ctrl+K O', action: () => fsStore.setProjectDir() },
+      { separator: true },
+      { label: 'Settings', icon: Settings, action: () => onOpenSettings && onOpenSettings() },
     ]},
     { label: 'View', items: [
-      { label: 'Toggle Sidebar', action: () => alert('Toggle Sidebar') },
-      { label: 'Toggle Chat', action: () => alert('Toggle Chat') },
-      { label: 'Zoom In', action: () => alert('Zoom In') },
-      { label: 'Zoom Out', action: () => alert('Zoom Out') },
-    ]},
-    { label: 'Themes', items: [
-      { label: 'Karsa Dark', action: () => themeStore.setTheme('karsa-dark'), check: () => themeStore.activeTheme === 'karsa-dark' },
-      { label: 'Dracula', action: () => themeStore.setTheme('dracula'), check: () => themeStore.activeTheme === 'dracula' },
-      { label: 'GitHub Light', action: () => themeStore.setTheme('github-light'), check: () => themeStore.activeTheme === 'github-light' },
-    ]},
-    { label: 'Help', items: [
-      { label: 'Welcome', action: () => alert('Welcome') },
-      { label: 'Documentation', action: () => alert('Documentation') },
-      { label: 'About', action: () => alert('About') },
-    ]},
+      { label: 'Sidebar', shortcut: 'Ctrl+B', action: () => alert('Sidebar') },
+      { label: 'Intelligence', shortcut: 'Ctrl+L', action: () => alert('Chat') },
+      { separator: true },
+      { label: 'Theme Mode', action: () => onOpenSettings && onOpenSettings('appearance') },
+    ]}
   ];
 
   function toggleMenu(label) {
-    if (activeMenu === label) {
-      activeMenu = null;
-    } else {
-      activeMenu = label;
-    }
+    if (activeMenu === label) activeMenu = null;
+    else activeMenu = label;
   }
 
   function handleClickOutside(event) {
-    if (menuRef && !menuRef.contains(event.target)) {
-      activeMenu = null;
-    }
+    if (menuRef && !menuRef.contains(event.target)) activeMenu = null;
   }
 
-  // Close menu when clicking outside
   if (typeof window !== 'undefined') {
     window.addEventListener('click', handleClickOutside);
   }
 </script>
 
-<div class="h-8 bg-background border-b border-border flex items-center px-2 select-none z-50 text-xs" bind:this={menuRef}>
-  <!-- App Icon/Menu (Optional) -->
-  <div class="px-2 py-1 mr-2 text-primary font-bold">Karsa</div>
-
+<div class="h-8 bg-background/50 backdrop-blur-md border-b border-border/20 flex items-center px-2 select-none z-50 text-[11px]" bind:this={menuRef}>
   {#each menus as menu}
     <div class="relative">
       <button 
         class={cn(
-          "px-3 py-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors",
-          activeMenu === menu.label ? "bg-muted text-foreground" : ""
+          "px-2.5 py-1 rounded-md transition-all font-bold tracking-tight uppercase",
+          activeMenu === menu.label ? "bg-primary/10 text-primary" : "text-muted-foreground/70 hover:text-foreground"
         )}
         onclick={(e) => { e.stopPropagation(); toggleMenu(menu.label); }}
       >
@@ -80,17 +53,21 @@
       </button>
       
       {#if activeMenu === menu.label}
-        <div class="absolute top-full left-0 min-w-[200px] bg-popover border border-border rounded-md shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-left">
+        <div class="absolute top-[110%] left-0 min-w-[180px] bg-popover/90 backdrop-blur-2xl border border-border/40 rounded-xl shadow-2xl py-1.5 z-[100] animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-black/5">
           {#each menu.items as item}
-            <button
-              class="w-full text-left px-4 py-1.5 hover:bg-accent hover:text-accent-foreground text-popover-foreground flex items-center justify-between group"
-              onclick={() => { item.action(); activeMenu = null; }}
-            >
-              <span>{item.label}</span>
-              {#if item.check && item.check()}
-                <Check size={12} class="text-primary" />
-              {/if}
-            </button>
+            {#if item.separator}
+              <div class="my-1 h-px bg-border/20 mx-2"></div>
+            {:else}
+              <button
+                class="w-full text-left px-3 py-1.5 hover:bg-primary/10 hover:text-primary text-popover-foreground flex items-center justify-between group mx-1 rounded-lg w-[calc(100%-8px)]"
+                onclick={() => { item.action(); activeMenu = null; }}
+              >
+                <span class="font-medium text-xs">{item.label}</span>
+                {#if item.shortcut}
+                  <span class="text-[8px] font-black text-muted-foreground/30 group-hover:text-primary/40 uppercase tracking-tighter ml-4">{item.shortcut}</span>
+                {/if}
+              </button>
+            {/if}
           {/each}
         </div>
       {/if}
@@ -99,8 +76,10 @@
 
   <div class="flex-1"></div>
   
-  <!-- Right side controls (optional) -->
-  <div class="flex items-center gap-2 px-2 text-muted-foreground">
-     <span class="text-[10px] opacity-50">v0.1.0-alpha</span>
+  <div class="flex items-center gap-3 px-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">
+     <div class="flex items-center gap-1.5 group cursor-default">
+        <div class="w-1 h-1 rounded-full bg-green-500"></div>
+        <span class="group-hover:text-green-500/60 transition-colors tracking-tight">Sync Status: Optimal</span>
+     </div>
   </div>
 </div>

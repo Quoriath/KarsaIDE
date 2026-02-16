@@ -18,6 +18,10 @@ pub struct CodebaseStats {
 pub struct ProjectMap {
     pub tree: String,
     pub total_files: usize,
+    pub config_files: Vec<String>,
+    pub entry_points: Vec<String>,
+    pub file_types: HashMap<String, usize>,
+    pub directories: Vec<String>,
 }
 
 pub struct IndexEngine {
@@ -93,23 +97,79 @@ impl IndexEngine {
     pub fn get_project_map(&self) -> ProjectMap {
         let files = self.files.lock().unwrap();
         let mut tree = String::new();
+        let mut config_files = Vec::new();
+        let mut entry_points = Vec::new();
+        let mut file_types: HashMap<String, usize> = HashMap::new();
+        let mut directories = std::collections::HashSet::new();
         
-        // Build tree structure
+        // Collect all paths and sort
         let mut paths: Vec<_> = files.keys().collect();
         paths.sort();
         
-        for path in paths {
-            if let Some(rel) = path.strip_prefix(&self.root).ok() {
-                let depth = rel.components().count() - 1;
+        // Build tree structure with proper indentation
+        for path in &paths {
+            if let Ok(rel) = path.strip_prefix(&self.root) {
+                let components: Vec<_> = rel.components().collect();
+                let depth = components.len() - 1;
                 let indent = "  ".repeat(depth);
                 let name = rel.file_name().unwrap().to_string_lossy();
+                
+                // Add to tree
                 tree.push_str(&format!("{}{}\n", indent, name));
+                
+                // Track directories
+                if let Some(parent) = rel.parent() {
+                    if parent != Path::new("") {
+                        directories.insert(parent.to_string_lossy().to_string());
+                    }
+                }
+                
+                // Identify config files
+                let name_lower = name.to_lowercase();
+                if name_lower.contains("config") 
+                    || name_lower.ends_with(".toml")
+                    || name_lower.ends_with(".json")
+                    || name_lower.ends_with(".yaml")
+                    || name_lower.ends_with(".yml")
+                    || name_lower == "package.json"
+                    || name_lower == "cargo.toml"
+                    || name_lower == "tsconfig.json"
+                    || name_lower == ".env"
+                    || name_lower == "dockerfile"
+                {
+                    config_files.push(rel.to_string_lossy().to_string());
+                }
+                
+                // Identify entry points
+                if name_lower == "main.rs"
+                    || name_lower == "lib.rs"
+                    || name_lower == "index.ts"
+                    || name_lower == "index.js"
+                    || name_lower == "app.ts"
+                    || name_lower == "app.js"
+                    || name_lower == "main.ts"
+                    || name_lower == "main.js"
+                    || name_lower == "main.py"
+                    || name_lower == "__init__.py"
+                {
+                    entry_points.push(rel.to_string_lossy().to_string());
+                }
+                
+                // Count file types
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_string();
+                    *file_types.entry(ext_str).or_insert(0) += 1;
+                }
             }
         }
         
         ProjectMap {
             tree,
             total_files: files.len(),
+            config_files,
+            entry_points,
+            file_types,
+            directories: directories.into_iter().collect(),
         }
     }
 

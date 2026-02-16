@@ -9,6 +9,7 @@ mod mcp;
 mod workspace;
 mod intelligence;
 mod environment;
+mod storage;
 
 use file_system::*;
 use commands::*;
@@ -74,6 +75,12 @@ pub fn run() {
             get_project_map,
             query_codebase,
             force_reindex,
+            add_recent_folder,
+            get_recent_folders,
+            set_last_workspace,
+            get_last_workspace,
+            save_chat_session,
+            get_chat_sessions,
         ])
         .setup(|_app| {
             log::info!("Karsa IDE setup complete");

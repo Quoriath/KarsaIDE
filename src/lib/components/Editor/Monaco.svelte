@@ -3,10 +3,11 @@
   import * as monaco from 'monaco-editor';
   import { fsStore } from '../../stores/fileSystem.svelte.js';
   import { themeStore } from '../../stores/theme.svelte.js';
+  import { uiState } from '../../stores/uiState.svelte.js';
+  import Breadcrumbs from './Breadcrumbs.svelte';
 
   let editorContainer;
   let editor;
-  let themeSubscription;
 
   const languageMap = {
     rs: 'rust', js: 'javascript', ts: 'typescript', svelte: 'svelte',
@@ -19,27 +20,13 @@
 
   function getLanguage(path) {
     const ext = path.split('.').pop()?.toLowerCase() || '';
-    return languageMap[ext] || 'plaintext';
-  }
-
-  // Get CSS Variable Value
-  function getCssVar(name) {
-    const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    if (!val) return '#000000';
-    // If it's HSL (e.g. "240 10% 3.9%"), we need to convert or just rely on hex in themeStore?
-    // themeStore uses HSL for Tailwind. Monaco needs Hex usually.
-    // For simplicity, let's assume themeStore provides a mapping or we just use hardcoded values based on theme name for now
-    // until we implement a full HSL->Hex converter.
-    return val;
+    const lang = languageMap[ext] || 'plaintext';
+    return lang;
   }
   
-  // Theme Adapter
   function updateMonacoTheme(themeName) {
     if (!monaco) return;
     
-    // Define themes based on active theme
-    // In a real app, parse CSS variables to Hex
-    // Here we map manually for high fidelity
     const isDark = themeStore.activeTheme !== 'github-light';
     
     const colors = {
@@ -84,9 +71,12 @@
 
     updateMonacoTheme(themeStore.activeTheme);
 
+    const initialLang = getLanguage(fsStore.activeFile?.path || '');
+    uiState.updateEditorStatus({ language: initialLang });
+
     editor = monaco.editor.create(editorContainer, {
       value: fsStore.activeFileContent || '',
-      language: getLanguage(fsStore.activeFile?.path || ''),
+      language: initialLang,
       theme: 'dynamic-theme',
       automaticLayout: true,
       fontSize: 14,
@@ -97,13 +87,22 @@
       padding: { top: 10 },
       smoothScrolling: true,
       cursorBlinking: 'smooth',
-      cursorSmoothCaretAnimation: 'on'
+      cursorSmoothCaretAnimation: 'on',
+      bracketPairColorization: { enabled: true },
+      guides: { indentation: true }
     });
 
     editor.onDidChangeModelContent(() => {
       if (fsStore.activeFile) {
         fsStore.updateActiveFileContent(editor.getValue());
       }
+    });
+
+    editor.onDidChangeCursorPosition((e) => {
+      uiState.updateEditorStatus({
+        line: e.position.lineNumber,
+        column: e.position.column
+      });
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -121,6 +120,8 @@
         const currentValue = editor.getValue();
         const newLang = getLanguage(fsStore.activeFile.path);
         
+        uiState.updateEditorStatus({ language: newLang });
+
         if (model) {
           monaco.editor.setModelLanguage(model, newLang);
         }
@@ -141,4 +142,8 @@
   });
 </script>
 
-<div class="flex-1 overflow-hidden h-full w-full" bind:this={editorContainer}></div>
+<div class="h-full flex flex-col">
+  <Breadcrumbs />
+  <div class="flex-1 overflow-hidden h-full w-full" bind:this={editorContainer}></div>
+</div>
+",file_path:

@@ -216,9 +216,17 @@ pub async fn send_agent_message_stream(
     state: State<'_, AppState>,
     messages: Vec<crate::ai_client::ChatMessage>,
     config: AIConfig,
+    workspace: Option<String>,
 ) -> Result<(), String> {
     state.ai.init_client().await;
     state.ai.reset_stream().await;
+    
+    // Set workspace in MCP
+    if let Some(ref ws) = workspace {
+        if let Ok(mut mcp) = state.mcp.lock() {
+            mcp.set_workspace(ws.clone());
+        }
+    }
     
     let client = match state.ai.get_client().await {
         Some(c) => c,
@@ -236,6 +244,7 @@ pub async fn send_agent_message_stream(
     loop {
         iteration += 1;
         log::info!("=== Agent iteration {} ===", iteration);
+        log::info!("Conversation history: {} messages", conversation.len());
         
         // Soft warning
         if iteration == SOFT_LIMIT {
@@ -395,37 +404,23 @@ pub async fn send_agent_message_stream(
             
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             
-            // Build conversation for next iteration
-            conversation.clear();
-            
-            if let Some(ref sys) = system_msg {
-                conversation.push(sys.clone());
-            }
-            
-            if let Some(ref um) = user_msg {
-                conversation.push(um.clone());
-            }
-            
-            // Add tool execution context
+            // CRITICAL: Add AI's response with tool call to conversation history
             conversation.push(crate::ai_client::ChatMessage {
                 role: "assistant".to_string(),
-                content: if !text_before.is_empty() {
-                    format!("{}\n\n[Executed: {}]", text_before, tool_name)
-                } else {
-                    format!("[Executed: {}]", tool_name)
-                },
+                content: full_content.clone(), // Keep the tool call in history
             });
             
+            // Add tool result to conversation
             conversation.push(crate::ai_client::ChatMessage {
                 role: "user".to_string(),
                 content: if is_error {
                     format!("Tool '{}' failed:\n{}\n\nPlease try a different approach or explain the issue.", tool_name, result_text)
                 } else {
-                    format!("Tool '{}' result:\n{}\n\nNow continue your response based on this result.", tool_name, result_text)
+                    format!("Tool '{}' executed successfully.\n\n<tool_result>\n{}\n</tool_result>\n\nNow analyze this result and provide your response. DO NOT call the same tool again - use the data you just received.", tool_name, result_text)
                 },
             });
             
-            // Continue loop - AI will respond to tool result
+            // Continue loop - AI will respond to tool result with FULL conversation history
             continue;
         }
         
@@ -442,68 +437,84 @@ pub async fn send_agent_message_stream(
 }
 
 fn extract_tool_calls_with_context(text: &str) -> (String, Vec<(String, serde_json::Value)>, String) {
-    let pattern = Regex::new(r#"\[\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^{}]*\})\s*\}\s*\]"#).unwrap();
-    
     let mut tool_calls = Vec::new();
     let mut text_before = String::new();
     let mut text_after = String::new();
     
-    if let Some(first_match) = pattern.find(text) {
-        // Text before first tool call
-        text_before = text[..first_match.start()].trim().to_string();
+    // Look for XML format: <tool_calls>...<invoke name="...">...</invoke>...</tool_calls>
+    if let Some(start_pos) = text.find("<tool_calls>") {
+        text_before = text[..start_pos].trim().to_string();
         
-        // Extract tool call
-        if let Some(cap) = pattern.captures(first_match.as_str()) {
-            if let (Some(name_match), Some(args_match)) = (cap.get(1), cap.get(2)) {
-                let tool_name = name_match.as_str().to_string();
-                let args_str = args_match.as_str();
+        if let Some(end_pos) = text[start_pos..].find("</tool_calls>") {
+            let tool_calls_block = &text[start_pos..start_pos + end_pos + "</tool_calls>".len()];
+            
+            // Parse <invoke name="tool_name">...</invoke> blocks
+            let mut current_pos = 0;
+            while let Some(invoke_start) = tool_calls_block[current_pos..].find("<invoke name=\"") {
+                let abs_invoke_start = current_pos + invoke_start;
+                let name_start = abs_invoke_start + "<invoke name=\"".len();
                 
-                if let Ok(arguments) = serde_json::from_str::<serde_json::Value>(args_str) {
-                    if tool_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        tool_calls.push((tool_name, arguments));
+                if let Some(name_end) = tool_calls_block[name_start..].find('"') {
+                    let tool_name = &tool_calls_block[name_start..name_start + name_end];
+                    let params_start = name_start + name_end + 2; // Skip ">
+                    
+                    if let Some(invoke_end) = tool_calls_block[params_start..].find("</invoke>") {
+                        let params_block = &tool_calls_block[params_start..params_start + invoke_end];
+                        
+                        // Parse parameters
+                        let mut arguments = serde_json::Map::new();
+                        let mut param_pos = 0;
+                        
+                        while let Some(param_start) = params_block[param_pos..].find("<parameter name=\"") {
+                            let abs_param_start = param_pos + param_start;
+                            let key_start = abs_param_start + "<parameter name=\"".len();
+                            
+                            if let Some(key_end) = params_block[key_start..].find('"') {
+                                let key = &params_block[key_start..key_start + key_end];
+                                let value_start = key_start + key_end + 2; // Skip ">
+                                
+                                if let Some(value_end) = params_block[value_start..].find("</parameter>") {
+                                    let value_str = params_block[value_start..value_start + value_end].trim();
+                                    
+                                    // Parse value type
+                                    let json_value = if value_str == "true" {
+                                        serde_json::Value::Bool(true)
+                                    } else if value_str == "false" {
+                                        serde_json::Value::Bool(false)
+                                    } else if let Ok(num) = value_str.parse::<i64>() {
+                                        serde_json::Value::Number(num.into())
+                                    } else {
+                                        serde_json::Value::String(value_str.to_string())
+                                    };
+                                    
+                                    arguments.insert(key.to_string(), json_value);
+                                    param_pos = value_start + value_end + "</parameter>".len();
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        tool_calls.push((tool_name.to_string(), serde_json::Value::Object(arguments)));
+                        current_pos = params_start + invoke_end + "</invoke>".len();
+                    } else {
+                        break;
                     }
+                } else {
+                    break;
                 }
             }
+            
+            text_after = text[start_pos + end_pos + "</tool_calls>".len()..].trim().to_string();
         }
-        
-        // Text after tool call (if any)
-        text_after = text[first_match.end()..].trim().to_string();
     } else {
         // No tool calls found
         text_before = text.trim().to_string();
     }
     
     (text_before, tool_calls, text_after)
-}
-
-fn extract_tool_calls(text: &str) -> (String, Vec<(String, serde_json::Value)>) {
-    let mut clean_text = text.to_string();
-    let mut tool_calls = Vec::new();
-    
-    // Pattern to find tool calls
-    let pattern = Regex::new(r#"\[\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^{}]*\})\s*\}\s*\]"#).unwrap();
-    
-    // Find all tool calls
-    for cap in pattern.captures_iter(text) {
-        if let (Some(name_match), Some(args_match)) = (cap.get(1), cap.get(2)) {
-            let tool_name = name_match.as_str().to_string();
-            let args_str = args_match.as_str();
-            
-            if let Ok(arguments) = serde_json::from_str::<serde_json::Value>(args_str) {
-                if tool_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                    tool_calls.push((tool_name, arguments));
-                }
-            }
-        }
-    }
-    
-    // Remove all tool call JSONs from text
-    clean_text = pattern.replace_all(&clean_text, "").to_string();
-    
-    // Clean up extra whitespace
-    clean_text = clean_text.split_whitespace().collect::<Vec<_>>().join(" ");
-    
-    (clean_text, tool_calls)
 }
 
 fn execute_mcp_tool(
@@ -851,3 +862,54 @@ pub fn force_reindex(
     }
 }
 
+
+// ============ STORAGE COMMANDS ============
+
+#[command]
+pub fn add_recent_folder(path: String, name: String) -> Result<(), String> {
+    let storage = crate::storage::StorageManager::new()
+        .map_err(|e| format!("Failed to init storage: {}", e))?;
+    storage.add_recent_folder(path, name)
+        .map_err(|e| format!("Failed to add recent folder: {}", e))
+}
+
+#[command]
+pub fn get_recent_folders() -> Result<Vec<crate::storage::RecentFolder>, String> {
+    let storage = crate::storage::StorageManager::new()
+        .map_err(|e| format!("Failed to init storage: {}", e))?;
+    let app_storage = storage.load()
+        .map_err(|e| format!("Failed to load storage: {}", e))?;
+    Ok(app_storage.recent_folders)
+}
+
+#[command]
+pub fn set_last_workspace(path: String) -> Result<(), String> {
+    let storage = crate::storage::StorageManager::new()
+        .map_err(|e| format!("Failed to init storage: {}", e))?;
+    storage.set_last_workspace(path)
+        .map_err(|e| format!("Failed to set last workspace: {}", e))
+}
+
+#[command]
+pub fn get_last_workspace() -> Result<Option<String>, String> {
+    let storage = crate::storage::StorageManager::new()
+        .map_err(|e| format!("Failed to init storage: {}", e))?;
+    storage.get_last_workspace()
+        .map_err(|e| format!("Failed to get last workspace: {}", e))
+}
+
+#[command]
+pub fn save_chat_session(session: crate::storage::ChatSession) -> Result<(), String> {
+    let storage = crate::storage::StorageManager::new()
+        .map_err(|e| format!("Failed to init storage: {}", e))?;
+    storage.save_chat_session(session)
+        .map_err(|e| format!("Failed to save chat session: {}", e))
+}
+
+#[command]
+pub fn get_chat_sessions(workspace: Option<String>) -> Result<Vec<crate::storage::ChatSession>, String> {
+    let storage = crate::storage::StorageManager::new()
+        .map_err(|e| format!("Failed to init storage: {}", e))?;
+    storage.get_chat_sessions(workspace)
+        .map_err(|e| format!("Failed to get chat sessions: {}", e))
+}

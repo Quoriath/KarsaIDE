@@ -24,104 +24,104 @@ export const themes = {
       '--ring': '240 4.9% 83.9%',
     }
   },
-  'cyberpunk': {
-    name: 'Cyberpunk Neon',
-    type: 'dark',
-    colors: {
-      '--background': '265 50% 5%',     /* Deep Purple Black */
-      '--foreground': '300 100% 95%',   /* Neon White */
-      '--card': '265 50% 8%',
-      '--card-foreground': '300 100% 95%',
-      '--popover': '265 50% 5%',
-      '--popover-foreground': '300 100% 95%',
-      '--primary': '310 100% 65%',      /* Neon Pink */
-      '--primary-foreground': '265 50% 5%',
-      '--secondary': '265 50% 20%',
-      '--secondary-foreground': '300 100% 95%',
-      '--muted': '265 40% 15%',
-      '--muted-foreground': '290 30% 60%',
-      '--accent': '180 100% 50%',       /* Cyan Accent */
-      '--accent-foreground': '265 50% 5%',
-      '--destructive': '0 100% 60%',
-      '--destructive-foreground': '0 0% 100%',
-      '--border': '310 50% 30%',        /* Pinkish Border */
-      '--input': '265 50% 15%',
-      '--ring': '310 100% 65%',
-    }
-  },
   'nord': {
-    name: 'Nord Snow',
+    name: 'Nord Night',
     type: 'dark',
     colors: {
-      '--background': '220 16% 22%',    /* Polar Night */
-      '--foreground': '218 27% 92%',    /* Snow Storm */
-      '--card': '220 16% 22%',
+      '--background': '220 16% 22%',
+      '--foreground': '218 27% 92%',
+      '--card': '220 16% 24%',
       '--card-foreground': '218 27% 92%',
-      '--popover': '222 16% 28%',
+      '--popover': '220 16% 22%',
       '--popover-foreground': '218 27% 92%',
-      '--primary': '193 43% 67%',       /* Frost Blue */
+      '--primary': '193 43% 67%',
       '--primary-foreground': '220 16% 22%',
       '--secondary': '222 16% 28%',
       '--secondary-foreground': '218 27% 92%',
       '--muted': '222 16% 28%',
       '--muted-foreground': '220 15% 55%',
-      '--accent': '213 32% 52%',        /* Frost Darker */
-      '--accent-foreground': '218 27% 94%',
-      '--destructive': '354 42% 56%',   /* Aurora Red */
-      '--destructive-foreground': '0 0% 100%',
-      '--border': '222 16% 35%',
+      '--accent': '213 32% 52%',
+      '--accent-foreground': '218 27% 92%',
+      '--destructive': '0 68% 58%',
+      '--destructive-foreground': '218 27% 92%',
+      '--border': '222 16% 28%',
       '--input': '222 16% 28%',
       '--ring': '193 43% 67%',
     }
   },
-  'gruvbox': {
-    name: 'Gruvbox Retro',
+  'one-dark': {
+    name: 'One Dark Pro',
     type: 'dark',
     colors: {
-      '--background': '0 0% 16%',       /* Dark Hard */
-      '--foreground': '45 25% 85%',     /* Light 1 */
-      '--card': '0 0% 20%',             /* Dark 1 */
-      '--card-foreground': '45 25% 85%',
-      '--popover': '0 0% 16%',
-      '--popover-foreground': '45 25% 85%',
-      '--primary': '35 100% 55%',       /* Orange/Yellow */
-      '--primary-foreground': '0 0% 16%',
-      '--secondary': '0 0% 30%',        /* Dark 2 */
-      '--secondary-foreground': '45 25% 85%',
-      '--muted': '0 0% 25%',
-      '--muted-foreground': '0 0% 60%',
-      '--accent': '142 40% 50%',        /* Green */
-      '--accent-foreground': '45 25% 85%',
-      '--destructive': '0 65% 50%',     /* Red */
-      '--destructive-foreground': '45 25% 85%',
-      '--border': '0 0% 30%',
-      '--input': '0 0% 20%',
-      '--ring': '35 100% 55%',
+      '--background': '220 13% 18%',
+      '--foreground': '220 14% 71%',
+      '--card': '220 13% 20%',
+      '--card-foreground': '220 14% 71%',
+      '--popover': '220 13% 18%',
+      '--popover-foreground': '220 14% 71%',
+      '--primary': '207 82% 66%',
+      '--primary-foreground': '220 13% 18%',
+      '--secondary': '220 13% 25%',
+      '--secondary-foreground': '220 14% 71%',
+      '--muted': '220 13% 25%',
+      '--muted-foreground': '220 10% 50%',
+      '--accent': '286 60% 67%',
+      '--accent-foreground': '220 13% 18%',
+      '--destructive': '355 65% 65%',
+      '--destructive-foreground': '0 0% 100%',
+      '--border': '220 13% 25%',
+      '--input': '220 13% 25%',
+      '--ring': '207 82% 66%',
     }
   },
   'dracula': {
     name: 'Dracula',
     type: 'dark',
     colors: {
-      '--background': '231 15% 18%',      /* #282a36 */
-      '--foreground': '60 30% 96%',       /* #f8f8f2 */
-      '--card': '231 15% 18%',
+      '--background': '231 15% 18%',
+      '--foreground': '60 30% 96%',
+      '--card': '231 15% 20%',
       '--card-foreground': '60 30% 96%',
       '--popover': '231 15% 18%',
       '--popover-foreground': '60 30% 96%',
-      '--primary': '326 100% 74%',        /* Pink #ff79c6 */
+      '--primary': '326 100% 74%',
       '--primary-foreground': '231 15% 18%',
-      '--secondary': '231 15% 26%',       /* #44475a */
+      '--secondary': '231 15% 26%',
       '--secondary-foreground': '60 30% 96%',
       '--muted': '231 15% 26%',
       '--muted-foreground': '231 10% 55%',
-      '--accent': '265 89% 78%',          /* Purple */
+      '--accent': '265 89% 78%',
       '--accent-foreground': '231 15% 18%',
-      '--destructive': '0 100% 67%',      /* #ff5555 */
+      '--destructive': '0 100% 67%',
       '--destructive-foreground': '0 0% 100%',
       '--border': '231 15% 26%',
       '--input': '231 15% 26%',
       '--ring': '326 100% 74%',
+    }
+  },
+  'cyberpunk': {
+    name: 'Cyberpunk',
+    type: 'dark',
+    colors: {
+      '--background': '265 50% 5%',
+      '--foreground': '300 100% 95%',
+      '--card': '265 50% 8%',
+      '--card-foreground': '300 100% 95%',
+      '--popover': '265 50% 5%',
+      '--popover-foreground': '300 100% 95%',
+      '--primary': '310 100% 65%',
+      '--primary-foreground': '265 50% 5%',
+      '--secondary': '265 50% 20%',
+      '--secondary-foreground': '300 100% 95%',
+      '--muted': '265 40% 15%',
+      '--muted-foreground': '290 30% 60%',
+      '--accent': '180 100% 50%',
+      '--accent-foreground': '265 50% 5%',
+      '--destructive': '0 100% 60%',
+      '--destructive-foreground': '0 0% 100%',
+      '--border': '310 50% 30%',
+      '--input': '265 50% 15%',
+      '--ring': '310 100% 65%',
     }
   },
   'github-light': {
@@ -134,7 +134,7 @@ export const themes = {
       '--card-foreground': '240 10% 3.9%',
       '--popover': '0 0% 100%',
       '--popover-foreground': '240 10% 3.9%',
-      '--primary': '212 92% 45%',         /* GitHub Blue */
+      '--primary': '212 92% 45%',
       '--primary-foreground': '0 0% 100%',
       '--secondary': '220 14% 96%',
       '--secondary-foreground': '220 14% 10%',
@@ -153,34 +153,63 @@ export const themes = {
     name: 'Solarized Ocean',
     type: 'light',
     colors: {
-      '--background': '44 87% 94%',      /* Base3 #fdf6e3 */
-      '--foreground': '192 81% 14%',     /* Base00 #657b83 */
+      '--background': '44 87% 94%',
+      '--foreground': '192 81% 14%',
       '--card': '44 87% 96%',
       '--card-foreground': '192 81% 14%',
       '--popover': '44 87% 94%',
       '--popover-foreground': '192 81% 14%',
-      '--primary': '175 59% 40%',        /* Cyan #2aa198 */
+      '--primary': '175 59% 40%',
       '--primary-foreground': '44 87% 94%',
-      '--secondary': '42 44% 86%',       /* Base2 #eee8d5 */
+      '--secondary': '42 44% 86%',
       '--secondary-foreground': '192 81% 14%',
       '--muted': '42 44% 86%',
       '--muted-foreground': '205 20% 50%',
       '--accent': '42 44% 86%',
       '--accent-foreground': '192 81% 14%',
-      '--destructive': '1 71% 52%',      /* Red #dc322f */
+      '--destructive': '1 71% 52%',
       '--destructive-foreground': '44 87% 94%',
       '--border': '42 44% 82%',
       '--input': '42 44% 86%',
       '--ring': '175 59% 40%',
     }
+  },
+  'rose-pine': {
+    name: 'Rose Pine',
+    type: 'dark',
+    colors: {
+      '--background': '249 22% 12%',
+      '--foreground': '245 50% 91%',
+      '--card': '249 22% 15%',
+      '--card-foreground': '245 50% 91%',
+      '--popover': '249 22% 12%',
+      '--popover-foreground': '245 50% 91%',
+      '--primary': '343 76% 68%',
+      '--primary-foreground': '249 22% 12%',
+      '--secondary': '249 22% 20%',
+      '--secondary-foreground': '245 50% 91%',
+      '--muted': '249 22% 20%',
+      '--muted-foreground': '248 12% 52%',
+      '--accent': '35 100% 82%',
+      '--accent-foreground': '249 22% 12%',
+      '--destructive': '2 55% 61%',
+      '--destructive-foreground': '245 50% 91%',
+      '--border': '249 22% 20%',
+      '--input': '249 22% 20%',
+      '--ring': '343 76% 68%',
+    }
   }
 };
 
 class ThemeStore {
+  mode = $state('dark');
   activeTheme = $state('karsa-dark');
   
-  constructor() {
-    this.applyTheme('karsa-dark');
+  constructor() {}
+
+  setMode(mode) {
+    this.mode = mode;
+    this.applyTheme(this.activeTheme);
   }
 
   setTheme(themeName) {
@@ -192,18 +221,26 @@ class ThemeStore {
 
   applyTheme(themeName) {
     const theme = themes[themeName];
+    if (!theme) return;
+
     const root = document.documentElement;
     
-    // Set colors
     Object.entries(theme.colors).forEach(([key, value]) => {
       root.style.setProperty(key, value);
     });
 
-    // Set class for tailwind dark mode
-    if (theme.type === 'dark') {
+    if (this.mode === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark) root.classList.add('dark');
+      else root.classList.remove('dark');
+    } else if (this.mode === 'dark') {
       root.classList.add('dark');
-    } else {
+    } else if (this.mode === 'light') {
       root.classList.remove('dark');
+    } else {
+      // Default fallback to theme type
+      if (theme.type === 'dark') root.classList.add('dark');
+      else root.classList.remove('dark');
     }
   }
 }

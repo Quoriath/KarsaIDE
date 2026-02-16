@@ -27,28 +27,43 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20 overflow-hidden h-screen w-screen;
   }
 
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 4px;
+    height: 4px;
   }
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded-full;
+    @apply bg-border/50 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground/30;
   }
 }
 
-.markdown-body {
-  @apply text-sm leading-relaxed;
+@layer components {
+  .bento-grid {
+    @apply grid grid-cols-12 auto-rows-[minmax(100px,auto)] gap-3;
+  }
+  
+  .bento-card {
+    @apply bg-card/30 border border-border/40 rounded-2xl backdrop-blur-md p-5 transition-all duration-300 hover:border-primary/30 hover:bg-muted/10 shadow-sm overflow-hidden relative;
+  }
+
+  .glass {
+    @apply bg-background/60 backdrop-blur-xl border border-white/5;
+  }
 }
-.markdown-body p { @apply mb-4; }
-.markdown-body pre { @apply bg-muted p-0 rounded-lg overflow-hidden my-4 border border-border; }
-.markdown-body pre code { @apply bg-transparent p-4 text-foreground block overflow-x-auto font-mono; }
-.markdown-body code:not(pre code) { @apply bg-primary/10 text-primary px-1 rounded font-mono text-xs; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 3s ease-in-out infinite;
+}

@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/core';
 class ConfigStore {
   settings = $state({
     theme: 'karsa-dark',
+    appearance: {
+      mode: 'dark'
+    },
     ai: {
       provider: 'kilo',
       apiKey: '',
@@ -34,24 +37,25 @@ class ConfigStore {
 
   async load() {
     try {
-      // Load from backend (secure storage)
       const backendConfig = await invoke('get_ai_config');
       
-      // Merge with defaults
       this.settings = {
         ...this.settings,
+        theme: backendConfig.theme || this.settings.theme,
+        appearance: backendConfig.appearance || this.settings.appearance,
         ai: {
           ...this.settings.ai,
           provider: backendConfig.ai?.provider || this.settings.ai.provider,
           apiKey: backendConfig.ai?.api_key || this.settings.ai.apiKey,
           baseUrl: backendConfig.ai?.base_url || this.settings.ai.baseUrl,
           selectedModel: backendConfig.ai?.model_name || this.settings.ai.selectedModel,
-          models: backendConfig.ai?.custom_models || this.settings.ai.models
+          models: (backendConfig.ai?.custom_models && backendConfig.ai.custom_models.length > 0) 
+            ? backendConfig.ai.custom_models 
+            : this.settings.ai.models
         },
-        editor: backendConfig.editor || this.settings.editor
+        editor: { ...this.settings.editor, ...backendConfig.editor }
       };
 
-      // Load layout from localStorage (UI state)
       const layoutStored = localStorage.getItem('karsa_layout');
       if (layoutStored) {
         this.settings.layout = { ...this.settings.layout, ...JSON.parse(layoutStored) };
@@ -66,9 +70,10 @@ class ConfigStore {
 
   async save() {
     try {
-      // Save to backend
       await invoke('save_ai_config', {
         config: {
+          theme: this.settings.theme,
+          appearance: this.settings.appearance,
           ai: {
             provider: this.settings.ai.provider,
             api_key: this.settings.ai.apiKey,
@@ -87,8 +92,6 @@ class ConfigStore {
           }
         }
       });
-
-      // Save layout to localStorage
       localStorage.setItem('karsa_layout', JSON.stringify(this.settings.layout));
     } catch (e) {
       console.error('Failed to save config:', e);
@@ -105,9 +108,14 @@ class ConfigStore {
     localStorage.setItem('karsa_layout', JSON.stringify(this.settings.layout));
   }
 
+  updateSettings(updates) {
+    this.settings = { ...this.settings, ...updates };
+    this.save();
+  }
+
   setTheme(themeName) {
     this.settings.theme = themeName;
-    localStorage.setItem('karsa_theme', themeName);
+    this.save();
   }
 }
 

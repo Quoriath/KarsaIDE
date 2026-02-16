@@ -291,26 +291,70 @@ fn get_mode_config(mode: &str) -> ModeConfig {
 
 CORE PRINCIPLES:
 - Be direct, concise, and technical
-- Never use flattery ("Great question!", "I'd be happy to help!")
+- Never use flattery
 - Never ask follow-up questions unless truly necessary
 - Explain complex concepts clearly
+- NEVER make up information - only state what you can verify from tool results
+- If you don't know something, say "I don't know" or "I need to check"
 
 COMMUNICATION STYLE:
 - Start responses directly with the answer or action
 - Use code blocks for code examples
 - Be precise and factual
 - Acknowledge uncertainty when it exists
+- Be honest about limitations - don't exaggerate or minimize
 
-When using tools:
-1. Briefly mention what you're looking for
-2. Execute the tool
-3. Analyze results
-4. Provide clear answer or next action"#.to_string(),
+ACCURACY RULES - CRITICAL:
+1. ONLY state facts that are in the tool results
+2. If tool returns 5 files, say "5 files" - NOT "many files" or "a few files"
+3. If you see "total_files": 50, say "50 files" - be EXACT
+4. Don't assume file contents - read them first
+5. Don't guess project purpose - analyze actual files
+6. If data is missing, say "I need to check X" and call the appropriate tool
+
+TOOL USAGE - CRITICAL:
+1. When you need file/project information, call the appropriate tool using XML format
+2. Wait for tool result (provided in <tool_result> tags)
+3. READ THE RESULT CAREFULLY - it contains real data
+4. Analyze the result thoroughly
+5. Provide a clear, helpful response based ONLY on the tool output
+6. NEVER say "the project is empty" or "no files found" if tool returned data
+7. NEVER output raw JSON - always use XML format for tool calls
+8. NEVER call the same tool twice - use the data you already have
+9. State exactly what the tool returned - no more, no less
+10. Check conversation history - if you already called a tool and got results, USE THOSE RESULTS
+
+WORKFLOW EXAMPLE (CORRECT):
+User: "What does this project do?"
+You: <tool_calls><invoke name="get_project_map"><parameter name="path">.</parameter></invoke></tool_calls>
+System: <tool_result>{"total_files": 50, "entry_points": ["src/main.rs"], "config_files": ["Cargo.toml"]}</tool_result>
+You: "This project has 50 files. It's a Rust project with main entry point at src/main.rs and uses Cargo for dependency management."
+
+WORKFLOW EXAMPLE (WRONG - HALLUCINATION):
+User: "What does this project do?"
+You: <tool_calls><invoke name="get_project_map"><parameter name="path">.</parameter></invoke></tool_calls>
+System: <tool_result>{"total_files": 50, "entry_points": ["src/main.rs"]}</tool_result>
+You: "This is a web server project with authentication and database integration..." [WRONG - Making up details]
+
+WORKFLOW EXAMPLE (WRONG - REDUNDANT):
+User: "What does this project do?"
+You: <tool_calls><invoke name="get_project_map"><parameter name="path">.</parameter></invoke></tool_calls>
+System: <tool_result>{"total_files": 50, ...}</tool_result>
+You: <tool_calls><invoke name="get_project_map"><parameter name="path">.</parameter></invoke></tool_calls> [WRONG - Already have data]
+
+CRITICAL: 
+- Tool results are REAL and ACCURATE. Always analyze them before responding.
+- If you already called a tool and got results, USE THOSE RESULTS.
+- Don't repeat tool calls unless you need DIFFERENT data.
+- NEVER invent information that's not in the tool results.
+- Check your conversation history before calling tools."#.to_string(),
             instructions: r#"Technical Guidelines:
 - Write clean, idiomatic code
 - Consider edge cases
 - Follow existing project conventions
-- Test assumptions by reading relevant files"#.to_string(),
+- Test assumptions by reading relevant files
+- Always analyze tool results before responding
+- Use XML format for ALL tool calls"#.to_string(),
         },
         "architect" => ModeConfig {
             name: "Architect".to_string(),
@@ -349,21 +393,114 @@ Style: Clear, educational, direct."#.to_string(),
 }
 
 fn get_tool_usage_rules() -> String {
-    r#"When you need to use a tool, output a JSON array:
+    r#"TOOL CALLING - XML FORMAT
 
-[{"name": "tool_name", "arguments": {"param": "value"}}]
+When you need to use a tool, use this EXACT XML format:
 
-Rules:
-- Use tools only when you need to read files or search code
-- Call tools once, then provide your answer
-- Don't repeatedly call the same tools
-- For general questions, respond without tools
+<tool_calls>
+<invoke name="tool_name">
+<parameter name="param1">value1</parameter>
+<parameter name="param2">value2</parameter>
+</invoke>
+</tool_calls>
 
-Examples:
-[{"name": "file_read", "arguments": {"path": "src/main.rs"}}]
-[{"name": "list_files", "arguments": {"path": "."}}]
-[{"name": "search", "arguments": {"pattern": "function", "path": "src"}}]"#
-        .to_string()
+CRITICAL RULES:
+1. Use XML tags, NOT JSON
+2. String values go directly in parameter tags - NO ESCAPING NEEDED
+3. Boolean values: "true" or "false" (as strings)
+4. Call ONE tool at a time
+5. After tool execution, you will receive results in <tool_result> tags
+6. ALWAYS analyze tool results before responding
+7. NEVER call the same tool twice with the same parameters
+8. If you already have the data, USE IT - don't fetch again
+
+CORRECT Examples:
+
+For project overview (RECOMMENDED):
+<tool_calls>
+<invoke name="get_project_map">
+<parameter name="path">.</parameter>
+</invoke>
+</tool_calls>
+
+For listing all files recursively:
+<tool_calls>
+<invoke name="list_files">
+<parameter name="path">.</parameter>
+<parameter name="recursive">true</parameter>
+</invoke>
+</tool_calls>
+
+For reading a file:
+<tool_calls>
+<invoke name="file_read">
+<parameter name="path">Cargo.toml</parameter>
+</invoke>
+</tool_calls>
+
+INTERPRETING RESULTS:
+
+When you receive tool results, ANALYZE THEM PROPERLY and STATE EXACTLY WHAT YOU SEE:
+
+Example 1 - list_files result:
+<tool_result>
+{
+  "files": ["Cargo.toml", "README.md", "src/main.rs"],
+  "directories": ["src", "target"],
+  "total_files": 3
+}
+</tool_result>
+
+CORRECT: "The directory contains 3 files: Cargo.toml, README.md, and src/main.rs. There are 2 subdirectories: src and target."
+WRONG: "The project is empty" or "No files found"
+WRONG: "There are many files" (be EXACT: say "3 files")
+WRONG: "This appears to be a Rust web server" (don't assume - read files first)
+
+Example 2 - get_project_map result:
+<tool_result>
+{
+  "total_files": 50,
+  "entry_points": ["src/main.rs"],
+  "important_config_files": ["Cargo.toml", "tauri.conf.json"],
+  "file_types": [["rs", 30], ["svelte", 15], ["toml", 2]],
+  "summary": "Project contains 50 files in 20 directories. Main file types: 30 .rs files, 15 .svelte files, 2 .toml files. Entry points: src/main.rs. Key configs: Cargo.toml, tauri.conf.json."
+}
+</tool_result>
+
+CORRECT: "This project has 50 files total. It contains 30 Rust files (.rs), 15 Svelte files, and 2 TOML files. The main entry point is src/main.rs. Config files include Cargo.toml and tauri.conf.json."
+WRONG: "I cannot find any files"
+WRONG: "This is a large project" (say "50 files", not "large")
+WRONG: "This is a full-stack web application with authentication" (don't invent features)
+
+Example 3 - file_read result:
+<tool_result>
+{
+  "content": "use tauri::Manager;\n\nfn main() {\n    tauri::Builder::default()",
+  "total_lines": 50,
+  "showing": "Showing lines 1-1000 of 50 total lines"
+}
+</tool_result>
+
+CORRECT: "The file has 50 lines total. It starts with 'use tauri::Manager;' and defines a main function that uses tauri::Builder."
+WRONG: "The file is empty"
+WRONG: "This file handles authentication" (only state what you see in the content)
+
+NOTE: The 'content' field contains the EXACT file content. Read it carefully and describe what you actually see.
+
+CRITICAL RULES FOR ACCURACY:
+1. State EXACT numbers from tool results (don't say "many", "few", "several")
+2. List ACTUAL file names and paths from results
+3. Don't assume project purpose - only describe what you can verify
+4. If you need more info, call another tool - don't guess
+5. Say "I need to read X to know more" instead of making assumptions
+6. If result shows "... and X more", acknowledge it but DON'T say "truncated" - just state the total
+7. Use the 'summary' field in tool results - it contains the most important info
+
+WRONG - DO NOT USE JSON:
+[{"name": "list_files", "arguments": {...}}] [WRONG FORMAT]
+
+For general questions:
+Answer directly - NO TOOLS NEEDED."#.to_string()
 }
 
 // ============ TOOL IMPLEMENTATIONS ============
@@ -374,7 +511,7 @@ impl MCPTool for FileReadTool {
         "file_read"
     }
     fn description(&self) -> &str {
-        "Read file contents with optional line range and pattern highlighting."
+        "Read file contents with line numbers. Default reads lines 1-1000. Specify start_line and end_line to read specific range. Returns EXACT file content as-is."
     }
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![
@@ -397,9 +534,9 @@ impl MCPTool for FileReadTool {
             ToolParameter {
                 name: "end_line".into(),
                 param_type: "number".into(),
-                description: "End line (default: 500)".into(),
+                description: "End line (default: 1000, reads up to this line or file end)".into(),
                 required: false,
-                default: Some(serde_json::json!(500)),
+                default: Some(serde_json::json!(1000)),
                 enum_values: None,
             },
         ]
@@ -410,17 +547,30 @@ impl MCPTool for FileReadTool {
     fn execute(
         &self,
         params: serde_json::Value,
-        _workspace: Option<&str>,
+        workspace: Option<&str>,
     ) -> Result<serde_json::Value> {
-        let path = params["path"]
+        let path_str = params["path"]
             .as_str()
             .ok_or(anyhow::anyhow!("Missing path"))?;
-        let content = std::fs::read_to_string(path)?;
+        
+        // Resolve path relative to workspace
+        let full_path = if std::path::Path::new(path_str).is_absolute() {
+            path_str.to_string()
+        } else if let Some(ws) = workspace {
+            format!("{}/{}", ws, path_str)
+        } else {
+            path_str.to_string()
+        };
+        
+        log::info!("file_read: path={}, workspace={:?}, full_path={}", path_str, workspace, full_path);
+        
+        let content = std::fs::read_to_string(&full_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", full_path, e))?;
         let lines: Vec<&str> = content.lines().collect();
         let total = lines.len();
 
         let start = params["start_line"].as_u64().unwrap_or(1).max(1) as usize;
-        let end = params["end_line"].as_u64().unwrap_or(500).min(total as u64) as usize;
+        let end = params["end_line"].as_u64().unwrap_or(1000).min(total as u64) as usize;
 
         if start > total {
             return Err(anyhow::anyhow!(
@@ -430,18 +580,27 @@ impl MCPTool for FileReadTool {
             ));
         }
 
-        let numbered: Vec<String> = lines[(start - 1)..end.min(total)]
+        let actual_end = end.min(total);
+        let selected_lines = &lines[(start - 1)..actual_end];
+        
+        // Return raw content without line numbers for AI to see exact file content
+        let raw_content = selected_lines.join("\n");
+        
+        // Also provide numbered version for reference
+        let numbered: Vec<String> = selected_lines
             .iter()
             .enumerate()
             .map(|(i, line)| format!("{:4} | {}", start + i, line))
             .collect();
 
         Ok(serde_json::json!({
-            "content": numbered.join("\n"),
+            "content": raw_content,
+            "content_with_lines": numbered.join("\n"),
             "start_line": start,
-            "end_line": end.min(total),
+            "end_line": actual_end,
             "total_lines": total,
-            "file_path": path
+            "file_path": full_path,
+            "showing": format!("Showing lines {}-{} of {} total lines", start, actual_end, total)
         }))
     }
 }
@@ -613,7 +772,7 @@ impl MCPTool for ListFilesTool {
         "list_files"
     }
     fn description(&self) -> &str {
-        "List files in a directory."
+        "List all files and directories in a path. Returns EXACT list with file names and paths. Use recursive=true to scan subdirectories. Returns total_files count - state this number exactly."
     }
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![
@@ -1603,7 +1762,7 @@ impl MCPTool for GetProjectMapTool {
         "get_project_map"
     }
     fn description(&self) -> &str {
-        "Get an overview of the project structure."
+        "Get comprehensive project overview: file tree, total file count, config files, entry points, and file type breakdown. USE THIS FIRST when user asks 'what does this project do' or 'show me project structure'. Returns EXACT numbers and paths."
     }
     fn parameters(&self) -> Vec<ToolParameter> {
         vec![ToolParameter {
@@ -1621,17 +1780,32 @@ impl MCPTool for GetProjectMapTool {
     fn execute(
         &self,
         params: serde_json::Value,
-        _workspace: Option<&str>,
+        workspace: Option<&str>,
     ) -> Result<serde_json::Value> {
-        let path = params["path"].as_str().unwrap_or(".");
+        let path_str = params["path"].as_str().unwrap_or(".");
+        let base_path = if path_str == "." {
+            workspace.unwrap_or(".")
+        } else {
+            path_str
+        };
+        
+        log::info!("get_project_map: base_path={}, workspace={:?}", base_path, workspace);
+        
+        let path = std::path::Path::new(base_path);
+        if !path.exists() {
+            log::error!("Path does not exist: {}", base_path);
+            return Err(anyhow::anyhow!("Path does not exist: {}", base_path));
+        }
 
         let mut file_types: HashMap<String, usize> = HashMap::new();
         let mut entry_points = Vec::new();
         let mut config_files = Vec::new();
+        let mut directories = Vec::new();
+        let mut tree_lines = Vec::new();
         let mut total_files = 0;
 
         for entry in walkdir::WalkDir::new(path)
-            .max_depth(3)
+            .max_depth(5)
             .into_iter()
             .filter_entry(|e| {
                 let name = e.file_name().to_string_lossy();
@@ -1639,43 +1813,111 @@ impl MCPTool for GetProjectMapTool {
                     && name != "node_modules"
                     && name != "target"
                     && name != "dist"
+                    && name != "build"
             })
         {
             if let Ok(entry) = entry {
-                if entry.file_type().is_file() {
-                    total_files += 1;
-
-                    let ext = entry
-                        .path()
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("other")
-                        .to_string();
-                    *file_types.entry(ext).or_insert(0) += 1;
-
-                    let name = entry.file_name().to_string_lossy();
-                    if name == "main.rs"
-                        || name == "index.js"
-                        || name == "App.svelte"
-                        || name == "main.py"
-                    {
-                        entry_points.push(entry.path().display().to_string());
+                let entry_path = entry.path();
+                let rel_path = match entry_path.strip_prefix(path) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let depth = rel_path.components().count().saturating_sub(1);
+                let indent = "  ".repeat(depth);
+                let name = entry.file_name().to_string_lossy();
+                
+                if entry.file_type().is_dir() {
+                    if depth > 0 {
+                        directories.push(rel_path.to_string_lossy().to_string());
+                        tree_lines.push(format!("{}{}/", indent, name));
                     }
-                    if name == "Cargo.toml" || name == "package.json" || name == "go.mod" {
-                        config_files.push(entry.path().display().to_string());
+                } else if entry.file_type().is_file() {
+                    total_files += 1;
+                    tree_lines.push(format!("{}{}", indent, name));
+                    
+                    if let Some(ext) = entry_path.extension() {
+                        let ext_str = ext.to_string_lossy().to_string();
+                        *file_types.entry(ext_str).or_insert(0) += 1;
+                    }
+                    
+                    let name_lower = name.to_lowercase();
+                    if name_lower.contains("config")
+                        || name_lower.ends_with(".toml")
+                        || name_lower.ends_with(".json")
+                        || name_lower.ends_with(".yaml")
+                        || name_lower.ends_with(".yml")
+                        || name_lower == "package.json"
+                        || name_lower == "cargo.toml"
+                        || name_lower == "tauri.conf.json"
+                        || name_lower == "pubspec.yaml"
+                        || name_lower == "go.mod"
+                        || name_lower == "pom.xml"
+                        || name_lower == "build.gradle"
+                    {
+                        config_files.push(rel_path.to_string_lossy().to_string());
+                    }
+                    
+                    if name_lower == "main.rs"
+                        || name_lower == "lib.rs"
+                        || name_lower == "index.js"
+                        || name_lower == "app.svelte"
+                        || name_lower == "main.py"
+                        || name_lower == "main.dart"
+                        || name_lower == "main.go"
+                        || name_lower == "main.java"
+                    {
+                        entry_points.push(rel_path.to_string_lossy().to_string());
                     }
                 }
             }
         }
+        
+        log::info!("get_project_map result: {} files, {} dirs", total_files, directories.len());
 
-        let mut sorted_types: Vec<_> = file_types.into_iter().collect();
-        sorted_types.sort_by(|a, b| b.1.cmp(&a.1));
+        // Limit tree to top 100 lines to prevent truncation
+        let tree_preview = if tree_lines.len() > 100 {
+            let mut preview = tree_lines[..100].to_vec();
+            preview.push(format!("... and {} more files/directories", tree_lines.len() - 100));
+            preview.join("\n")
+        } else {
+            tree_lines.join("\n")
+        };
+
+        // Prioritize important config files
+        let important_configs: Vec<String> = config_files.iter()
+            .filter(|f| {
+                let lower = f.to_lowercase();
+                lower.contains("package.json") 
+                || lower.contains("cargo.toml")
+                || lower.contains("pubspec.yaml")
+                || lower.contains("go.mod")
+                || lower.contains("pom.xml")
+                || lower.contains("build.gradle")
+                || lower.contains("tauri.conf")
+            })
+            .cloned()
+            .collect();
+
+        // Sort file types by count (most common first)
+        let mut file_type_list: Vec<(String, usize)> = file_types.into_iter().collect();
+        file_type_list.sort_by(|a, b| b.1.cmp(&a.1));
+        let top_file_types: Vec<(String, usize)> = file_type_list.into_iter().take(10).collect();
 
         Ok(serde_json::json!({
             "total_files": total_files,
-            "file_types": sorted_types,
+            "total_directories": directories.len(),
+            "file_types": top_file_types,
             "entry_points": entry_points,
-            "config_files": config_files
+            "important_config_files": important_configs,
+            "tree_preview": tree_preview,
+            "summary": format!(
+                "Project contains {} files in {} directories. Main file types: {}. Entry points: {}. Key configs: {}.",
+                total_files,
+                directories.len(),
+                top_file_types.iter().take(3).map(|(ext, count)| format!("{} .{} files", count, ext)).collect::<Vec<_>>().join(", "),
+                if entry_points.is_empty() { "none detected".to_string() } else { entry_points.join(", ") },
+                if important_configs.is_empty() { "none".to_string() } else { important_configs.join(", ") }
+            )
         }))
     }
 }
