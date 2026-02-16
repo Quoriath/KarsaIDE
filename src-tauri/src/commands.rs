@@ -159,7 +159,6 @@ pub async fn send_agent_message_stream(
     config: AIConfig,
 ) -> Result<(), String> {
     let client = AIClient::new();
-    let max_iterations = 5;
     let mut iteration = 0;
     
     // Only keep last 2 messages + system prompt
@@ -167,11 +166,7 @@ pub async fn send_agent_message_stream(
     
     loop {
         iteration += 1;
-        if iteration > max_iterations {
-            let _ = app.emit("ai-stream-chunk", "\n\n⚠️ Max iterations reached".to_string());
-            let _ = app.emit("ai-stream-done", ());
-            break;
-        }
+        log::info!("=== Iteration {} ===", iteration);
         
         // Use STREAMING API
         let request = crate::ai_client::ChatRequest {
@@ -197,8 +192,8 @@ pub async fn send_agent_message_stream(
         let mut stream = response.bytes_stream();
         let mut accumulated = String::new();
         let mut accumulated_reasoning = String::new();
-        let mut has_tool_calls = false;
         
+        // Collect all chunks first
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| format!("Stream error: {}", e))?;
             let text = String::from_utf8_lossy(&bytes);
@@ -213,13 +208,11 @@ pub async fn send_agent_message_stream(
                     if let Ok(chunk_data) = serde_json::from_str::<crate::ai_client::ChatResponse>(data) {
                         if let Some(choice) = chunk_data.choices.first() {
                             if let Some(delta) = &choice.delta {
-                                // Accumulate reasoning (don't emit yet)
                                 if let Some(reasoning) = &delta.reasoning {
                                     if !reasoning.is_empty() {
                                         accumulated_reasoning.push_str(reasoning);
                                     }
                                 }
-                                // Accumulate content (don't emit yet)
                                 if let Some(content) = &delta.content {
                                     if !content.is_empty() {
                                         accumulated.push_str(content);
@@ -232,37 +225,35 @@ pub async fn send_agent_message_stream(
             }
         }
         
-        // Stream finished - now emit reasoning first
+        log::info!("Reasoning: {} chars, Content: {} chars", accumulated_reasoning.len(), accumulated.len());
+        
+        // Emit reasoning if exists (thinking process)
         if !accumulated_reasoning.is_empty() {
             let _ = app.emit("ai-stream-reasoning", accumulated_reasoning.clone());
-            // Small delay to let UI update
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
         
-        // Check for tool calls AFTER reasoning
-        has_tool_calls = extract_tool_calls(&accumulated).is_some();
-        
-        // Only emit content if NO tool calls (final answer)
-        if !has_tool_calls {
-            // Emit accumulated content as stream
-            for chunk in accumulated.chars().collect::<Vec<_>>().chunks(50) {
-                let text: String = chunk.iter().collect();
-                let _ = app.emit("ai-stream-chunk", text);
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            }
-        }
-        
-        // Check for tool calls in accumulated response
+        // Check if AI wants to call tools
         if let Some(tool_calls) = extract_tool_calls(&accumulated) {
-            log::info!("Iteration {}: Found {} tool call(s)", iteration, tool_calls.len());
+            log::info!("AI requested tool call: {:?}", tool_calls[0].get("name"));
             
+            // Emit the text before tool call (AI's explanation)
+            let text_before_tools = accumulated.split('[').next().unwrap_or("").trim();
+            if !text_before_tools.is_empty() {
+                for chunk in text_before_tools.chars().collect::<Vec<_>>().chunks(50) {
+                    let text: String = chunk.iter().collect();
+                    let _ = app.emit("ai-stream-chunk", text);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                }
+            }
+            
+            // Execute tool
             for tool_call in tool_calls {
                 let tool_name = tool_call.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let arguments = tool_call.get("arguments").cloned().unwrap_or(serde_json::json!({}));
                 
-                log::info!("Executing tool: {} with args: {:?}", tool_name, arguments);
+                log::info!("Executing tool: {}", tool_name);
                 
-                // Emit tool call event (for UI display)
                 let _ = app.emit("ai-tool-call", serde_json::json!({
                     "name": tool_name,
                     "arguments": arguments
@@ -284,7 +275,6 @@ pub async fn send_agent_message_stream(
                             result_str
                         };
                         
-                        // Emit tool result event
                         let _ = app.emit("ai-tool-result", serde_json::json!({
                             "name": tool_name,
                             "result": truncated.clone()
@@ -301,33 +291,38 @@ pub async fn send_agent_message_stream(
                     }
                 };
                 
+                // Add tool result to conversation - AI will see this
                 conversation.push(crate::ai_client::ChatMessage {
                     role: "user".to_string(),
                     content: result,
                 });
                 
-                log::info!("Tool result added to conversation. Total messages: {}", conversation.len());
+                log::info!("Tool result added. Conversation size: {}", conversation.len());
             }
             
-            // Keep only last 3 messages
-            if conversation.len() > 3 {
+            // Keep conversation manageable
+            if conversation.len() > 5 {
                 let system_msg = conversation.first().cloned();
-                conversation = conversation.into_iter().rev().take(2).rev().collect();
+                conversation = conversation.into_iter().rev().take(4).rev().collect();
                 if let Some(sys) = system_msg {
                     if sys.role == "system" {
                         conversation.insert(0, sys);
                     }
                 }
-                log::info!("Trimmed conversation to {} messages", conversation.len());
             }
             
-            log::info!("Continuing to next iteration...");
-            // Continue loop
+            // Continue loop - AI will respond to tool result
             continue;
         }
         
-        log::info!("No tool calls found. Emitting final answer.");
-        // No tool calls - done
+        // No tool calls - this is final answer
+        log::info!("Final answer from AI");
+        for chunk in accumulated.chars().collect::<Vec<_>>().chunks(50) {
+            let text: String = chunk.iter().collect();
+            let _ = app.emit("ai-stream-chunk", text);
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        
         let _ = app.emit("ai-stream-done", ());
         break;
     }
