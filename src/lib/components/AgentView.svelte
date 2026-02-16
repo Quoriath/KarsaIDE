@@ -67,6 +67,12 @@
       scrollToBottom();
     });
 
+    const unlistenReasoningComplete = await listen('ai-reasoning-complete', (event) => {
+      const reasoning = typeof event.payload === 'string' ? event.payload : '';
+      streamingReasoning = reasoning; // Set complete reasoning
+      scrollToBottom();
+    });
+
     const unlistenToolCall = await listen('ai-tool-call', (event) => {
       const toolCall = event.payload;
       streamingTools = [...streamingTools, {
@@ -148,7 +154,8 @@
 
     unlistenHandlers.push(
       unlistenChunk, 
-      unlistenReasoning, 
+      unlistenReasoning,
+      unlistenReasoningComplete,
       unlistenToolCall, 
       unlistenToolResult, 
       unlistenDone, 

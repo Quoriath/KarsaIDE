@@ -326,99 +326,93 @@ pub async fn send_agent_message_stream(
         
         log::info!("Stream complete - Content: {} chars", full_content.len());
         
+        // Emit complete reasoning first
+        if !full_reasoning.is_empty() {
+            let _ = app.emit("ai-reasoning-complete", full_reasoning.clone());
+        }
+        
         // Check if content contains tool calls
-        let (clean_content, tool_calls) = extract_tool_calls(&full_content);
+        let (text_before, tool_calls, text_after) = extract_tool_calls_with_context(&full_content);
         
         if !tool_calls.is_empty() {
             log::info!("Found {} tool calls", tool_calls.len());
             
-            // Stream clean content (text before tools) if any
-            if !clean_content.is_empty() {
-                let _ = app.emit("ai-stream-chunk", clean_content.clone());
+            // Emit text BEFORE tool calls
+            if !text_before.is_empty() {
+                let _ = app.emit("ai-stream-chunk", text_before.clone());
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
             
-            // Process tools one by one and collect results
-            let mut all_tool_results = Vec::new();
+            // Process ONLY FIRST tool (enforce sequential)
+            let (tool_name, arguments) = &tool_calls[0];
             
-            for (tool_name, arguments) in &tool_calls {
-                // Emit tool call event
-                let _ = app.emit("ai-tool-call", serde_json::json!({
-                    "name": tool_name,
-                    "arguments": arguments
-                }));
-                
-                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                
-                // Execute tool
-                let tool_result = execute_mcp_tool(&state, tool_name, arguments.clone());
-                
-                let (result_text, is_error) = match tool_result {
-                    Ok(data) => {
-                        let result_str = serde_json::to_string_pretty(&data).unwrap_or_else(|_| "null".to_string());
-                        let truncated = if result_str.len() > 20000 {
-                            format!("{}...\n\n[Truncated: {} chars]", &result_str[..20000], result_str.len())
-                        } else if result_str == "null" {
-                            "Success (no output).".to_string()
-                        } else {
-                            result_str
-                        };
-                        (truncated, false)
-                    }
-                    Err(e) => (format!("Error: {}", e), true)
-                };
-                
-                // Store result for conversation
-                all_tool_results.push((tool_name.clone(), result_text.clone(), is_error));
-                
-                // Emit result to frontend
-                let _ = app.emit("ai-tool-result", serde_json::json!({
-                    "name": tool_name,
-                    "result": result_text.clone(),
-                    "error": if is_error { Some(result_text.clone()) } else { None },
-                    "isError": is_error
-                }));
-                
-                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            }
+            // Emit tool call event
+            let _ = app.emit("ai-tool-call", serde_json::json!({
+                "name": tool_name,
+                "arguments": arguments
+            }));
             
-            // Build conversation for next iteration with ACTUAL tool results
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                
+            // Execute tool
+            let tool_result = execute_mcp_tool(&state, tool_name, arguments.clone());
+            
+            let (result_text, is_error) = match tool_result {
+                Ok(data) => {
+                    let result_str = serde_json::to_string_pretty(&data).unwrap_or_else(|_| "null".to_string());
+                    let truncated = if result_str.len() > 2000 {
+                        format!("{}...\n\n[Result truncated: {} total chars]", &result_str[..2000], result_str.len())
+                    } else if result_str == "null" {
+                        "Success (no output).".to_string()
+                    } else {
+                        result_str
+                    };
+                    (truncated, false)
+                }
+                Err(e) => (format!("Error: {}", e), true)
+            };
+            
+            // Emit result to frontend
+            let _ = app.emit("ai-tool-result", serde_json::json!({
+                "name": tool_name,
+                "result": result_text.clone(),
+                "error": if is_error { Some(result_text.clone()) } else { None },
+                "isError": is_error
+            }));
+            
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            
+            // Build conversation for next iteration
             conversation.clear();
             
             if let Some(ref sys) = system_msg {
                 conversation.push(sys.clone());
             }
             
-            // Add user message
             if let Some(ref um) = user_msg {
                 conversation.push(um.clone());
             }
             
-            // Build tool results message
-            let results_message: String = all_tool_results.iter()
-                .map(|(name, result, is_error)| {
-                    if *is_error {
-                        format!("Tool '{}' failed:\n{}", name, result)
-                    } else {
-                        format!("Tool '{}' result:\n{}", name, result)
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n\n---\n\n");
-            
+            // Add tool execution context
             conversation.push(crate::ai_client::ChatMessage {
                 role: "assistant".to_string(),
-                content: format!("Using tools to gather information:\n{}", 
-                    tool_calls.iter().map(|(n, a)| format!("[{}: {:?}]", n, a)).collect::<Vec<_>>().join(" ")),
+                content: if !text_before.is_empty() {
+                    format!("{}\n\n[Executed: {}]", text_before, tool_name)
+                } else {
+                    format!("[Executed: {}]", tool_name)
+                },
             });
             
             conversation.push(crate::ai_client::ChatMessage {
                 role: "user".to_string(),
-                content: format!(
-                    "Here are the tool results:\n\n{}\n\nNow answer the user's original question based on these results. Be helpful and direct.",
-                    results_message
-                ),
+                content: if is_error {
+                    format!("Tool '{}' failed:\n{}\n\nPlease try a different approach or explain the issue.", tool_name, result_text)
+                } else {
+                    format!("Tool '{}' result:\n{}\n\nNow continue your response based on this result.", tool_name, result_text)
+                },
             });
             
+            // Continue loop - AI will respond to tool result
             continue;
         }
         
@@ -432,6 +426,41 @@ pub async fn send_agent_message_stream(
     }
     
     Ok(())
+}
+
+fn extract_tool_calls_with_context(text: &str) -> (String, Vec<(String, serde_json::Value)>, String) {
+    let pattern = Regex::new(r#"\[\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^{}]*\})\s*\}\s*\]"#).unwrap();
+    
+    let mut tool_calls = Vec::new();
+    let mut text_before = String::new();
+    let mut text_after = String::new();
+    
+    if let Some(first_match) = pattern.find(text) {
+        // Text before first tool call
+        text_before = text[..first_match.start()].trim().to_string();
+        
+        // Extract tool call
+        if let Some(cap) = pattern.captures(first_match.as_str()) {
+            if let (Some(name_match), Some(args_match)) = (cap.get(1), cap.get(2)) {
+                let tool_name = name_match.as_str().to_string();
+                let args_str = args_match.as_str();
+                
+                if let Ok(arguments) = serde_json::from_str::<serde_json::Value>(args_str) {
+                    if tool_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        tool_calls.push((tool_name, arguments));
+                    }
+                }
+            }
+        }
+        
+        // Text after tool call (if any)
+        text_after = text[first_match.end()..].trim().to_string();
+    } else {
+        // No tool calls found
+        text_before = text.trim().to_string();
+    }
+    
+    (text_before, tool_calls, text_after)
 }
 
 fn extract_tool_calls(text: &str) -> (String, Vec<(String, serde_json::Value)>) {
