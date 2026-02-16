@@ -245,11 +245,13 @@ pub async fn send_agent_message_stream(
         
         // Check for tool calls in accumulated response
         if let Some(tool_calls) = extract_tool_calls(&accumulated) {
-            // Don't show JSON - just execute tools
+            log::info!("Iteration {}: Found {} tool call(s)", iteration, tool_calls.len());
             
             for tool_call in tool_calls {
                 let tool_name = tool_call.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let arguments = tool_call.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+                
+                log::info!("Executing tool: {} with args: {:?}", tool_name, arguments);
                 
                 // Emit tool call event (for UI display)
                 let _ = app.emit("ai-tool-call", serde_json::json!({
@@ -294,6 +296,8 @@ pub async fn send_agent_message_stream(
                     role: "user".to_string(),
                     content: result,
                 });
+                
+                log::info!("Tool result added to conversation. Total messages: {}", conversation.len());
             }
             
             // Keep only last 3 messages
@@ -305,12 +309,15 @@ pub async fn send_agent_message_stream(
                         conversation.insert(0, sys);
                     }
                 }
+                log::info!("Trimmed conversation to {} messages", conversation.len());
             }
             
+            log::info!("Continuing to next iteration...");
             // Continue loop
             continue;
         }
         
+        log::info!("No tool calls found. Emitting final answer.");
         // No tool calls - done
         let _ = app.emit("ai-stream-done", ());
         break;
@@ -326,7 +333,9 @@ fn extract_tool_calls(text: &str) -> Option<Vec<serde_json::Value>> {
             let json_str = &text[start..=end];
             if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
                 if !arr.is_empty() && arr[0].get("name").is_some() {
-                    return Some(arr);
+                    // CRITICAL: Only return FIRST tool call
+                    // AI must call one tool at a time
+                    return Some(vec![arr[0].clone()]);
                 }
             }
         }

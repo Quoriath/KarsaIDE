@@ -121,7 +121,29 @@
       if (activeConversationId !== event.payload.id) return;
     });
 
-    unlistenHandlers.push(unlistenChunk, unlistenReasoning, unlistenToolCall, unlistenToolResult, unlistenDone, unlistenUpdate);
+    // Keyboard shortcuts
+    const handleKeydown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        createNewConversation();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        searchQuery = '';
+        document.querySelector('aside input')?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeydown);
+
+    unlistenHandlers.push(
+      unlistenChunk, 
+      unlistenReasoning, 
+      unlistenToolCall, 
+      unlistenToolResult, 
+      unlistenDone, 
+      unlistenUpdate,
+      () => window.removeEventListener('keydown', handleKeydown)
+    );
   });
 
   onDestroy(() => {
@@ -392,14 +414,61 @@ Active File: ${fsStore.activeFile?.name || 'None'}
             >
               <div class={cn("p-1.5 rounded-md transition-colors", activeConversationId === session.id ? "bg-background text-primary" : "bg-muted/30")}><MessageSquare size={14} /></div>
               <div class="flex-1 min-w-0">
-                 <div class="truncate font-medium">{session.title}</div>
-                 <div class="text-[10px] opacity-60 mt-0.5 truncate">{new Date((session.updated_at || session.created_at) * 1000).toLocaleDateString()}</div>
+                {#if editingTitle && activeConversationId === session.id}
+                  <input 
+                    type="text" 
+                    bind:value={editingTitleValue}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') {
+                        renameConversation(session.id, editingTitleValue);
+                        editingTitle = false;
+                      }
+                      if (e.key === 'Escape') {
+                        editingTitle = false;
+                      }
+                    }}
+                    onblur={() => {
+                      if (editingTitle) {
+                        renameConversation(session.id, editingTitleValue);
+                        editingTitle = false;
+                      }
+                    }}
+                    class="w-full bg-background border border-primary rounded px-1 py-0.5 text-xs"
+                    onclick={(e) => e.stopPropagation()}
+                  />
+                {:else}
+                  <div class="truncate font-medium" ondblclick={() => { editingTitle = true; editingTitleValue = session.title; }}>{session.title}</div>
+                {/if}
+                <div class="text-[10px] opacity-60 mt-0.5 truncate">{new Date((session.updated_at || session.created_at) * 1000).toLocaleDateString()}</div>
               </div>
-              <button class={cn("absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors bg-background/80 backdrop-blur-sm", activeConversationId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100")} onclick={(e) => deleteConversation(e, session.id)}><Trash2 size={12} /></button>
+              
+              <!-- Action buttons -->
+              <div class={cn("flex items-center gap-0.5 transition-opacity", activeConversationId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+                <button 
+                  class="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors" 
+                  onclick={(e) => { e.stopPropagation(); exportConversation(session.id); }}
+                  title="Export conversation"
+                >
+                  <Download size={12} />
+                </button>
+                <button 
+                  class="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors" 
+                  onclick={(e) => deleteConversation(e, session.id)}
+                  title="Delete conversation"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
             </div>
           {/each}
         </div>
       {/each}
+      
+      {#if conversations.length === 0}
+        <div class="text-center text-muted-foreground/50 text-xs py-8">
+          No conversations yet
+        </div>
+      {/if}
     </div>
     <div class="p-4 border-t border-border bg-background/30 backdrop-blur-sm">
        <button class="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground w-full px-2 py-1.5 rounded-md hover:bg-muted transition-colors"><Settings size={14} /> Agent Settings</button>
@@ -409,8 +478,30 @@ Active File: ${fsStore.activeFile?.name || 'None'}
   <!-- Main Area -->
   <main class="flex-1 flex flex-col relative bg-background/50 backdrop-blur-3xl">
     <header class="h-14 border-b border-border flex items-center justify-between px-6 bg-background/80 backdrop-blur-md sticky top-0 z-20 shadow-sm transition-all duration-300">
-      <div class="flex items-center gap-4"><div class="w-64"><ModelSelector bind:selectedModel apiKey={configStore.settings.ai.apiKey} onModelChange={(m) => configStore.updateAiConfig({ selectedModel: m.id })} /></div></div>
-      <div class="flex items-center gap-2"><div class="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/30 px-2.5 py-1 rounded-full border border-border/50"><span class={cn("w-1.5 h-1.5 rounded-full animate-pulse", isLoading ? "bg-yellow-500" : "bg-green-500")}></span>{isLoading ? 'Thinking...' : 'Online'}</div></div>
+      <div class="flex items-center gap-4">
+        <div class="w-64"><ModelSelector bind:selectedModel apiKey={configStore.settings.ai.apiKey} onModelChange={(m) => configStore.updateAiConfig({ selectedModel: m.id })} /></div>
+        {#if messages.length > 0}
+          <div class="text-xs text-muted-foreground flex items-center gap-1">
+            <FolderTree size={12} />
+            <span>{messages.length} messages</span>
+          </div>
+        {/if}
+      </div>
+      <div class="flex items-center gap-3">
+        {#if activeConversationId}
+          <button 
+            onclick={() => exportConversation(activeConversationId)}
+            class="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="Export conversation"
+          >
+            <Download size={16} />
+          </button>
+        {/if}
+        <div class="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/30 px-2.5 py-1 rounded-full border border-border/50">
+          <span class={cn("w-1.5 h-1.5 rounded-full animate-pulse", isLoading ? "bg-yellow-500" : "bg-green-500")}></span>
+          {isLoading ? 'Thinking...' : 'Online'}
+        </div>
+      </div>
     </header>
 
     <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scroll-smooth scrollbar-thin scrollbar-thumb-muted/50 hover:scrollbar-thumb-muted" bind:this={messagesContainer} onscroll={handleScroll}>
@@ -424,73 +515,110 @@ Active File: ${fsStore.activeFile?.name || 'None'}
          </div>
        {/if}
 
-       {#each visibleMessages as msg}
-         <div class={cn("flex gap-4 max-w-4xl mx-auto group animate-in fade-in slide-in-from-bottom-4 duration-500", msg.role === 'user' ? "flex-row-reverse" : "")}>
-           <div class={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-border shadow-md transition-transform group-hover:scale-105", msg.role === 'user' ? "bg-gradient-to-br from-primary to-blue-600 text-primary-foreground" : "bg-card text-foreground")}>
-             {#if msg.role === 'user'} <User size={18} /> {:else} <Bot size={18} /> {/if}
-           </div>
-           <div class={cn("flex flex-col max-w-[85%]", msg.role === 'user' ? "items-end" : "items-start")}>
-             <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">{msg.role === 'user' ? 'You' : 'Karsa'} <span class="text-[10px] opacity-50">• {msg.timestamp}</span></div>
-             
-             {#if msg.role === 'assistant'}
-               {#if msg.reasoning}
-                 <ThinkingBlock content={msg.reasoning} isStreaming={false} />
-               {/if}
-               {#if msg.tools}
-                 {#each msg.tools as tool}
-                   <ToolExecution toolName={tool.name} args={tool.args} result={tool.result} status={tool.status} error={tool.error} />
-                 {/each}
-               {/if}
-             {/if}
-             
-             <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text", msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
-               {#if msg.role === 'assistant'} <MarkdownRenderer content={msg.content} /> {:else} <div class="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div> {/if}
-             </div>
-           </div>
-         </div>
-       {/each}
-
-       <!-- Streaming Block -->
-       {#if isLoading || streamingContent || streamingReasoning || streamingToolCalls.length > 0}
-          <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
-             <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0"><Bot size={18} class="text-muted-foreground" /></div>
-             <div class="flex flex-col max-w-[85%] items-start w-full">
-                <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">Karsa <span class="text-[10px] opacity-50">• Typing...</span></div>
-                
-                {#if streamingReasoning}
-                  <details open class="mb-2 w-full">
-                    <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-2 py-1 px-2 rounded bg-muted/30">
-                      <span class="text-[10px]">💭</span> Thinking...
-                    </summary>
-                    <div class="mt-2 text-xs text-muted-foreground bg-muted/20 rounded p-3 border border-border/50 whitespace-pre-wrap">
-                      {streamingReasoning}
-                    </div>
-                  </details>
+        {#each visibleMessages as msg, i}
+          <div class={cn("flex gap-4 max-w-4xl mx-auto group animate-in fade-in slide-in-from-bottom-4 duration-500", msg.role === 'user' ? "flex-row-reverse" : "")}>
+            <div class={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-border shadow-md transition-transform group-hover:scale-105", msg.role === 'user' ? "bg-gradient-to-br from-primary to-blue-600 text-primary-foreground" : "bg-card text-foreground")}>
+              {#if msg.role === 'user'} <User size={18} /> {:else} <Bot size={18} /> {/if}
+            </div>
+            <div class={cn("flex flex-col max-w-[85%]", msg.role === 'user' ? "items-end" : "items-start")}>
+              <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">
+                {msg.role === 'user' ? 'You' : 'Karsa'} 
+                <span class="text-[10px] opacity-50">• {msg.timestamp}</span>
+              </div>
+              
+              {#if msg.role === 'assistant'}
+                {#if msg.reasoning}
+                  <ThinkingBlock content={msg.reasoning} isStreaming={false} />
                 {/if}
-
-                {#if streamingToolCalls.length > 0}
-                  <div class="w-full space-y-1 mb-2">
-                    {#each streamingToolCalls as toolCall}
-                      <MCPToolCall 
-                        toolName={toolCall.name} 
-                        arguments={toolCall.arguments}
-                        result={toolCall.result}
-                        error={toolCall.error}
-                        executing={toolCall.executing}
-                      />
-                    {/each}
-                  </div>
+                {#if msg.tools}
+                  {#each msg.tools as tool}
+                    <ToolExecution toolName={tool.name} args={tool.arguments || tool.args} result={tool.result} status={tool.status} error={tool.error} />
+                  {/each}
                 {/if}
-                
-                {#if streamingContent}
-                  <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm min-w-[60px] w-full mt-2">
-                     <MarkdownRenderer content={streamingContent} />
-                     <span class="inline-block w-1.5 h-4 bg-primary align-middle ml-1 animate-pulse"></span>
-                  </div>
+              {/if}
+              
+              <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text relative", msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
+                {#if msg.role === 'assistant'} 
+                  <MarkdownRenderer content={msg.content} /> 
+                {:else} 
+                  <div class="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div> 
                 {/if}
-             </div>
+              </div>
+              
+              <!-- Message Actions -->
+              <div class={cn("flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity", msg.role === 'user' ? "flex-row-reverse" : "")}>
+                <button 
+                  onclick={() => copyMessage(msg.content, i)} 
+                  class="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Copy"
+                >
+                  {#if copiedMessageId === i} <Check size={14} class="text-green-500" /> {:else} <Copy size={14} /> {/if}
+                </button>
+                {#if msg.role === 'assistant'}
+                  <button 
+                    onclick={() => regenerateResponse(i)} 
+                    class="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    title="Regenerate"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                {/if}
+              </div>
+            </div>
           </div>
-       {/if}
+        {/each}
+
+        <!-- Streaming Block -->
+        {#if isLoading || streamingContent || streamingReasoning || streamingToolCalls.length > 0}
+           <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
+              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0"><Bot size={18} class="text-muted-foreground" /></div>
+              <div class="flex flex-col max-w-[85%] items-start w-full">
+                 <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">
+                   Karsa 
+                   <span class="text-[10px] opacity-50">• Typing...</span>
+                   {#if isLoading}
+                     <button 
+                       onclick={stopGeneration} 
+                       class="ml-2 p-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                       title="Stop generating"
+                     >
+                       <Square size={10} />
+                     </button>
+                   {/if}
+                 </div>
+                 
+                 {#if streamingReasoning}
+                   <ThinkingBlock content={streamingReasoning} isStreaming={true} />
+                 {/if}
+
+                 {#if streamingToolCalls.length > 0}
+                   <div class="w-full space-y-1 mb-2">
+                     {#each streamingToolCalls as toolCall}
+                       <MCPToolCall 
+                         toolName={toolCall.name} 
+                         arguments={toolCall.arguments}
+                         result={toolCall.result}
+                         error={toolCall.error}
+                         executing={toolCall.executing}
+                       />
+                     {/each}
+                   </div>
+                 {/if}
+                 
+                 {#if streamingContent}
+                   <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm min-w-[60px] w-full mt-2">
+                      <MarkdownRenderer content={streamingContent} />
+                      <span class="inline-block w-1.5 h-4 bg-primary align-middle ml-1 animate-pulse"></span>
+                   </div>
+                 {:else if isLoading && !streamingReasoning && streamingToolCalls.length === 0}
+                   <div class="flex items-center gap-2 text-muted-foreground">
+                     <Loader2 size={16} class="animate-spin" />
+                     <span class="text-xs">Waiting for response...</span>
+                   </div>
+                 {/if}
+              </div>
+           </div>
+        {/if}
        <div class="h-32 shrink-0 w-full" bind:this={scrollAnchor}></div>
     </div>
 
@@ -501,9 +629,45 @@ Active File: ${fsStore.activeFile?.name || 'None'}
     <div class="absolute bottom-6 left-0 right-0 px-4 md:px-0 flex justify-center z-30 pointer-events-none">
        <div class="w-full max-w-3xl bg-background/70 backdrop-blur-xl border border-border shadow-2xl rounded-2xl p-2 pointer-events-auto transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 focus-within:shadow-primary/10 focus-within:bg-background/90 group">
           <div class="flex items-end gap-2 relative">
-             <button class="p-3 text-muted-foreground hover:bg-muted hover:text-foreground rounded-xl transition-colors shrink-0"><Plus size={20} /></button>
-             <textarea bind:value={input} onkeydown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder="Ask Karsa anything..." class="flex-1 bg-transparent border-0 resize-none max-h-[200px] min-h-[44px] py-3 px-2 focus:ring-0 text-base placeholder:text-muted-foreground/60 scrollbar-hide leading-relaxed selection:bg-primary/20" rows="1"></textarea>
-             <button onclick={sendMessage} disabled={isLoading || !input.trim()} class="p-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-all shrink-0 mb-0.5 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95"><Send size={20} strokeWidth={2.5} /></button>
+             <button class="p-3 text-muted-foreground hover:bg-muted hover:text-foreground rounded-xl transition-colors shrink-0" title="Attach file (coming soon)"><Plus size={20} /></button>
+             <textarea 
+               bind:value={input} 
+               bind:this={inputTextarea}
+               onkeydown={(e) => { 
+                 if(e.key === 'Enter' && !e.shiftKey) { 
+                   e.preventDefault(); 
+                   sendMessage(); 
+                 }
+                 if(e.key === 'Escape' && isLoading) {
+                   stopGeneration();
+                 }
+               }} 
+               placeholder="Ask Karsa anything... (Enter to send, Shift+Enter for newline)" 
+               class="flex-1 bg-transparent border-0 resize-none max-h-[200px] min-h-[44px] py-3 px-2 focus:ring-0 text-base placeholder:text-muted-foreground/60 scrollbar-hide leading-relaxed selection:bg-primary/20" 
+               rows="1"
+             ></textarea>
+             {#if isLoading}
+               <button 
+                 onclick={stopGeneration} 
+                 class="p-3 bg-destructive text-destructive-foreground rounded-xl hover:bg-destructive/90 transition-all shrink-0 mb-0.5 shadow-lg"
+                 title="Stop generating (Esc)"
+               >
+                 <Square size={20} />
+               </button>
+             {:else}
+               <button 
+                 onclick={sendMessage} 
+                 disabled={!input.trim()} 
+                 class="p-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-all shrink-0 mb-0.5 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95"
+                 title="Send message (Enter)"
+               >
+                 <Send size={20} strokeWidth={2.5} />
+               </button>
+             {/if}
+          </div>
+          <div class="flex items-center justify-between px-3 py-1 text-[10px] text-muted-foreground/50">
+            <span>{messages.length} messages</span>
+            <span>Press Enter to send, Shift+Enter for new line</span>
           </div>
        </div>
     </div>
