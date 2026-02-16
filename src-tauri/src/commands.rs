@@ -196,6 +196,7 @@ pub async fn send_agent_message_stream(
 
         let mut stream = response.bytes_stream();
         let mut accumulated = String::new();
+        let mut accumulated_reasoning = String::new();
         let mut has_tool_calls = false;
         
         while let Some(chunk) = stream.next().await {
@@ -212,15 +213,16 @@ pub async fn send_agent_message_stream(
                     if let Ok(chunk_data) = serde_json::from_str::<crate::ai_client::ChatResponse>(data) {
                         if let Some(choice) = chunk_data.choices.first() {
                             if let Some(delta) = &choice.delta {
+                                // Accumulate reasoning (don't emit yet)
                                 if let Some(reasoning) = &delta.reasoning {
                                     if !reasoning.is_empty() {
-                                        let _ = app.emit("ai-stream-reasoning", reasoning.clone());
+                                        accumulated_reasoning.push_str(reasoning);
                                     }
                                 }
+                                // Accumulate content (don't emit yet)
                                 if let Some(content) = &delta.content {
                                     if !content.is_empty() {
                                         accumulated.push_str(content);
-                                        // Don't emit yet - check for tool calls first
                                     }
                                 }
                             }
@@ -230,7 +232,14 @@ pub async fn send_agent_message_stream(
             }
         }
         
-        // Check for tool calls BEFORE emitting content
+        // Stream finished - now emit reasoning first
+        if !accumulated_reasoning.is_empty() {
+            let _ = app.emit("ai-stream-reasoning", accumulated_reasoning.clone());
+            // Small delay to let UI update
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+        
+        // Check for tool calls AFTER reasoning
         has_tool_calls = extract_tool_calls(&accumulated).is_some();
         
         // Only emit content if NO tool calls (final answer)
