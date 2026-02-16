@@ -8,6 +8,7 @@ mod cache;
 mod mcp;
 mod workspace;
 mod intelligence;
+mod environment;
 
 use file_system::*;
 use commands::*;
