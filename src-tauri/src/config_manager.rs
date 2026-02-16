@@ -1,11 +1,12 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use anyhow::{Result, Context};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AIProvider {
+    #[default]
     Kilo,
     Ollama,
     OpenAI,
@@ -13,6 +14,7 @@ pub enum AIProvider {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AIConfig {
     pub provider: AIProvider,
     pub api_key: Option<String>,
@@ -22,23 +24,16 @@ pub struct AIConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SecuritySettings {
     pub auto_execute_shell: bool,
     pub auto_delete_files: bool,
     pub auto_move_files: bool,
-}
-
-impl Default for SecuritySettings {
-    fn default() -> Self {
-        Self {
-            auto_execute_shell: false,
-            auto_delete_files: false,
-            auto_move_files: false,
-        }
-    }
+    pub auto_save_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct EditorConfig {
     pub font_size: u32,
     pub tab_size: u32,
@@ -49,6 +44,7 @@ pub struct EditorConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TerminalConfig {
     pub shell: Option<String>,
     pub font_size: u32,
@@ -56,6 +52,7 @@ pub struct TerminalConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SessionData {
     pub last_workspace: Option<String>,
     pub open_files: Vec<String>,
@@ -72,10 +69,15 @@ pub struct RecentWorkspace {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KarsaConfig {
+    #[serde(default)]
     pub ai: AIConfig,
+    #[serde(default)]
     pub editor: EditorConfig,
+    #[serde(default)]
     pub terminal: TerminalConfig,
+    #[serde(default)]
     pub session: SessionData,
+    #[serde(default)]
     pub security: SecuritySettings,
 }
 
@@ -125,6 +127,17 @@ impl Default for SessionData {
     }
 }
 
+impl Default for SecuritySettings {
+    fn default() -> Self {
+        Self {
+            auto_execute_shell: false,
+            auto_delete_files: false,
+            auto_move_files: false,
+            auto_save_files: true,
+        }
+    }
+}
+
 impl Default for KarsaConfig {
     fn default() -> Self {
         Self {
@@ -142,9 +155,8 @@ pub fn get_config_path() -> Result<PathBuf> {
         .context("Failed to get config directory")?
         .join("karsa-ide");
 
-    fs::create_dir_all(&config_dir)
-        .context("Failed to create config directory")?;
-    
+    fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
+
     Ok(config_dir.join("karsa_config.json"))
 }
 
@@ -167,19 +179,15 @@ pub fn load_config() -> KarsaConfig {
 
 pub fn save_config(config: &KarsaConfig) -> Result<()> {
     let path = get_config_path()?;
-    let content = serde_json::to_string_pretty(config)
-        .context("Failed to serialize config")?;
-    fs::write(&path, content)
-        .context("Failed to write config")?;
+    let content = serde_json::to_string_pretty(config).context("Failed to serialize config")?;
+    fs::write(&path, content).context("Failed to write config")?;
     log::info!("Config saved to: {:?}", path);
     Ok(())
 }
 
 #[allow(dead_code)]
 pub fn config_exists() -> bool {
-    get_config_path()
-        .map(|p| p.exists())
-        .unwrap_or(false)
+    get_config_path().map(|p| p.exists()).unwrap_or(false)
 }
 
 #[allow(dead_code)]
@@ -187,10 +195,9 @@ pub fn get_config_dir() -> Result<PathBuf> {
     let config_dir = dirs::config_dir()
         .context("Failed to get config directory")?
         .join("karsa-ide");
-    
-    fs::create_dir_all(&config_dir)
-        .context("Failed to create config directory")?;
-    
+
+    fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
+
     Ok(config_dir)
 }
 

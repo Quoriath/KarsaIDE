@@ -12,7 +12,6 @@
   import MarkdownRenderer from './MarkdownRenderer.svelte';
   import ModelSelector from './ModelSelector.svelte';
   import ThinkingBlock from './Chat/ThinkingBlock.svelte';
-  import ToolExecution from './Chat/ToolExecution.svelte';
   import MCPToolCall from './MCPToolCall.svelte';
   import { cn } from '../utils.js';
 
@@ -32,8 +31,8 @@
   // Streaming Buffers
   let streamingContent = $state(''); 
   let streamingReasoning = $state('');
-  let streamingToolCalls = $state([]);
-  let completedTools = $state([]);
+  let streamingTools = $state([]); // Array of {name, arguments, executing, result, error}
+  let currentToolIndex = $state(0);
   
   // UI State
   let editingTitle = $state(false);
@@ -57,7 +56,7 @@
 
     // Event Listeners
     const unlistenChunk = await listen('ai-stream-chunk', (event) => {
-      const chunk = typeof event.payload === 'string' ? event.payload : event.payload?.chunk || '';
+      const chunk = typeof event.payload === 'string' ? event.payload : '';
       streamingContent += chunk;
       scrollToBottom();
     });
@@ -70,48 +69,60 @@
 
     const unlistenToolCall = await listen('ai-tool-call', (event) => {
       const toolCall = event.payload;
-      streamingToolCalls = [...streamingToolCalls, { 
+      streamingTools = [...streamingTools, {
         name: toolCall.name, 
         arguments: toolCall.arguments,
-        executing: true 
+        executing: true,
+        result: null,
+        error: null
       }];
+      currentToolIndex = streamingTools.length - 1;
       scrollToBottom();
     });
 
     const unlistenToolResult = await listen('ai-tool-result', (event) => {
-      if (streamingToolCalls.length > 0) {
-        const lastIndex = streamingToolCalls.length - 1;
-        streamingToolCalls[lastIndex] = {
-          ...streamingToolCalls[lastIndex],
-          executing: false,
-          result: event.payload.result,
-          error: event.payload.isError ? event.payload.result : null
-        };
-        streamingToolCalls = [...streamingToolCalls];
-        completedTools = [...completedTools, {
-          ...streamingToolCalls[lastIndex],
-          status: event.payload.isError ? 'error' : 'success'
-        }];
-      }
+      const payload = event.payload;
+      // Find the executing tool and update it
+      streamingTools = streamingTools.map((tool, index) => {
+        if (tool.executing && tool.name === payload.name) {
+          return {
+            ...tool,
+            executing: false,
+            result: payload.isError ? null : payload.result,
+            error: payload.isError ? payload.error : null
+          };
+        }
+        return tool;
+      });
       scrollToBottom();
     });
 
     const unlistenDone = await listen('ai-stream-done', async () => {
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
       if (isLoading) {
-        await saveMessage('assistant', streamingContent);
-        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        messages = [...messages, { 
-          role: 'assistant', 
-          content: streamingContent, 
-          reasoning: streamingReasoning,
-          tools: [...completedTools], 
-          timestamp 
+        // Create the assistant message with tools and content
+        const completedTools = streamingTools.filter(t => !t.executing);
+        
+        messages = [...messages, {
+          role: 'assistant',
+          content: streamingContent || '',
+          reasoning: streamingReasoning || '',
+          tools: completedTools,
+          timestamp
         }];
+        
+        // Save to database
+        if (streamingContent) {
+          await saveMessage('assistant', streamingContent);
+        }
       }
+      
+      // Reset state
       streamingContent = '';
       streamingReasoning = '';
-      streamingToolCalls = [];
-      completedTools = [];
+      streamingTools = [];
+      currentToolIndex = 0;
       isLoading = false;
       scrollToBottom();
     });
@@ -237,69 +248,27 @@
     } catch (e) {}
   }
   
-  async function regenerateResponse(index) {
-    if (isLoading || index < 1) return;
-    const userMsg = messages[index - 1];
-    if (userMsg?.role !== 'user') return;
-    
-    messages = messages.slice(0, index);
-    isLoading = true;
-    streamingContent = '';
-    streamingReasoning = '';
-    streamingToolCalls = [];
-    completedTools = [];
-    
-    try {
-      const mcpPrompt = await invoke('mcp_get_system_prompt');
-      const systemInfo = `
-====
-SYSTEM INFORMATION
-Operating System: ${navigator.platform}
-Current Workspace: ${fsStore.activeWorkspace || 'No workspace open'}
-Active File: ${fsStore.activeFile?.name || 'None'}
-====
-`;
-      const systemPrompt = mcpPrompt + systemInfo;
-      const msgs = [
-        { role: 'system', content: systemPrompt },
-        ...messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: userMsg.content }
-      ];
-      
-      const config = {
-        provider: configStore.settings.ai.provider,
-        api_key: configStore.settings.ai.apiKey,
-        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
-        model_name: selectedModel,
-        custom_models: []
-      };
-      
-      await invoke('send_agent_message_stream', { messages: msgs, config: config });
-    } catch (e) {
-      messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }];
-      isLoading = false;
-    }
-  }
-  
   async function stopGeneration() {
     try {
-      await invoke('stop_stream');
+      await invoke('cancel_ai_stream');
       if (streamingContent) {
         const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         messages = [...messages, { 
           role: 'assistant', 
-          content: streamingContent + '\n\n*[Generation stopped]*', 
+          content: streamingContent + '\n\n*[Stopped]*', 
           reasoning: streamingReasoning,
-          tools: [...completedTools], 
+          tools: streamingTools.filter(t => !t.executing), 
           timestamp 
         }];
         await saveMessage('assistant', streamingContent);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Failed to stop:', e);
+    }
     streamingContent = '';
     streamingReasoning = '';
-    streamingToolCalls = [];
-    completedTools = [];
+    streamingTools = [];
+    currentToolIndex = 0;
     isLoading = false;
   }
 
@@ -324,47 +293,34 @@ Active File: ${fsStore.activeFile?.name || 'None'}
 
   async function sendMessage() {
     if (!input.trim() || isLoading) return;
-    isLoading = true;
-    if (!activeConversationId) await createNewConversation();
-
-    const userMessage = input.trim();
-    input = '';
-    streamingContent = ''; 
-    streamingReasoning = '';
-    streamingToolCalls = [];
-    completedTools = [];
     
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMessage = input.trim();
+    input = '';
+    
+    // Reset streaming state
+    streamingContent = ''; 
+    streamingReasoning = '';
+    streamingTools = [];
+    currentToolIndex = 0;
+    
     messages = [...messages, { role: 'user', content: userMessage, timestamp }];
-    await saveMessage('user', userMessage);
-    await tick();
+    isLoading = true;
     scrollToBottom();
     
     try {
-      // Get MCP system prompt
-      const mcpPrompt = await invoke('mcp_get_system_prompt');
-      
-      // Get system information
-      const systemInfo = `
-====
-
-SYSTEM INFORMATION
-
-Operating System: ${navigator.platform}
-Current Workspace: ${fsStore.activeWorkspace || 'No workspace open'}
-Active File: ${fsStore.activeFile?.name || 'None'}
-
-====
-`;
-      
-      const systemPrompt = mcpPrompt + systemInfo;
-      console.log('System prompt length:', systemPrompt.length);
-      console.log('System prompt preview:', systemPrompt.substring(0, 200));
+      const cwd = fsStore.activeWorkspace || '.';
+      const mcpPrompt = await invoke('mcp_get_system_prompt', { 
+        mode: 'code', 
+        cwd: cwd 
+      });
       
       const msgs = [
-        { role: 'system', content: systemPrompt },
-        ...messages.slice(-2).map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: userMessage }
+        { role: 'system', content: mcpPrompt },
+        ...messages.filter(m => m.role !== 'system').slice(-6).map(m => ({ 
+          role: m.role, 
+          content: m.content 
+        }))
       ];
       
       const config = {
@@ -377,7 +333,57 @@ Active File: ${fsStore.activeFile?.name || 'None'}
       
       await invoke('send_agent_message_stream', { messages: msgs, config: config });
     } catch (e) {
-      messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp }];
+      messages = [...messages, { 
+        role: 'assistant', 
+        content: `**Error**: ${e}`, 
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+      }];
+      isLoading = false;
+    }
+  }
+  
+  async function regenerateResponse(index) {
+    if (isLoading || index < 1) return;
+    const userMsg = messages[index - 1];
+    if (userMsg?.role !== 'user') return;
+    
+    messages = messages.slice(0, index);
+    isLoading = true;
+    streamingContent = '';
+    streamingReasoning = '';
+    streamingTools = [];
+    currentToolIndex = 0;
+    
+    try {
+      const cwd = fsStore.activeWorkspace || '.';
+      const mcpPrompt = await invoke('mcp_get_system_prompt', { 
+        mode: 'code', 
+        cwd: cwd 
+      });
+      
+      const msgs = [
+        { role: 'system', content: mcpPrompt },
+        ...messages.filter(m => m.role !== 'system').slice(-6).map(m => ({ 
+          role: m.role, 
+          content: m.content 
+        }))
+      ];
+      
+      const config = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: []
+      };
+      
+      await invoke('send_agent_message_stream', { messages: msgs, config: config });
+    } catch (e) {
+      messages = [...messages, { 
+        role: 'assistant', 
+        content: `**Error**: ${e}`, 
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+      }];
       isLoading = false;
     }
   }
@@ -530,9 +536,15 @@ Active File: ${fsStore.activeFile?.name || 'None'}
                 {#if msg.reasoning}
                   <ThinkingBlock content={msg.reasoning} isStreaming={false} />
                 {/if}
-                {#if msg.tools}
+                {#if msg.tools && msg.tools.length > 0}
                   {#each msg.tools as tool}
-                    <ToolExecution toolName={tool.name} args={tool.arguments || tool.args} result={tool.result} status={tool.status} error={tool.error} />
+                    <MCPToolCall 
+                      toolName={tool.name} 
+                      arguments={tool.arguments}
+                      result={tool.result}
+                      error={tool.error}
+                      executing={false}
+                    />
                   {/each}
                 {/if}
               {/if}
@@ -568,19 +580,31 @@ Active File: ${fsStore.activeFile?.name || 'None'}
           </div>
         {/each}
 
-        <!-- Streaming Block -->
-        {#if isLoading || streamingContent || streamingReasoning || streamingToolCalls.length > 0}
+         <!-- Streaming Block -->
+         {#if isLoading || streamingContent || streamingReasoning || streamingTools.length > 0}
            <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
-              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0"><Bot size={18} class="text-muted-foreground" /></div>
+              <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0">
+                <Bot size={18} class="text-muted-foreground" />
+              </div>
               <div class="flex flex-col max-w-[85%] items-start w-full">
                  <div class="font-medium text-xs mb-1.5 text-muted-foreground flex items-center gap-2">
                    Karsa 
-                   <span class="text-[10px] opacity-50">• Typing...</span>
                    {#if isLoading}
+                     <span class="text-[10px] opacity-50">
+                       {#if streamingTools.some(t => t.executing)}
+                         Running tools...
+                       {:else if streamingTools.length > 0 && !streamingContent}
+                         Processing...
+                       {:else if streamingReasoning}
+                         Thinking...
+                       {:else}
+                         Writing...
+                       {/if}
+                     </span>
                      <button 
                        onclick={stopGeneration} 
                        class="ml-2 p-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                       title="Stop generating"
+                       title="Stop"
                      >
                        <Square size={10} />
                      </button>
@@ -591,34 +615,36 @@ Active File: ${fsStore.activeFile?.name || 'None'}
                    <ThinkingBlock content={streamingReasoning} isStreaming={true} />
                  {/if}
 
-                 {#if streamingToolCalls.length > 0}
-                   <div class="w-full space-y-1 mb-2">
-                     {#each streamingToolCalls as toolCall}
+                 {#if streamingTools.length > 0}
+                   <div class="w-full mb-2">
+                     {#each streamingTools as tool}
                        <MCPToolCall 
-                         toolName={toolCall.name} 
-                         arguments={toolCall.arguments}
-                         result={toolCall.result}
-                         error={toolCall.error}
-                         executing={toolCall.executing}
+                         toolName={tool.name} 
+                         arguments={tool.arguments}
+                         result={tool.result}
+                         error={tool.error}
+                         executing={tool.executing}
                        />
                      {/each}
                    </div>
                  {/if}
                  
                  {#if streamingContent}
-                   <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm min-w-[60px] w-full mt-2">
+                   <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm w-full">
                       <MarkdownRenderer content={streamingContent} />
-                      <span class="inline-block w-1.5 h-4 bg-primary align-middle ml-1 animate-pulse"></span>
+                      {#if isLoading}
+                        <span class="inline-block w-1.5 h-4 bg-primary align-middle ml-1 animate-pulse"></span>
+                      {/if}
                    </div>
-                 {:else if isLoading && !streamingReasoning && streamingToolCalls.length === 0}
-                   <div class="flex items-center gap-2 text-muted-foreground">
+                 {:else if isLoading && !streamingReasoning && streamingTools.length === 0}
+                   <div class="flex items-center gap-2 text-muted-foreground py-2">
                      <Loader2 size={16} class="animate-spin" />
-                     <span class="text-xs">Waiting for response...</span>
+                     <span class="text-xs">Thinking...</span>
                    </div>
                  {/if}
               </div>
            </div>
-        {/if}
+         {/if}
        <div class="h-32 shrink-0 w-full" bind:this={scrollAnchor}></div>
     </div>
 

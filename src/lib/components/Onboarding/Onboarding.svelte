@@ -72,7 +72,8 @@
         security: {
           auto_execute_shell: false,
           auto_delete_files: false,
-          auto_move_files: false
+          auto_move_files: false,
+          auto_save_files: true
         }
       };
       

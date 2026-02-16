@@ -43,6 +43,7 @@ pub fn run() {
             generate_chat_title,
             send_chat_completion_stream,
             send_agent_message_stream,
+            cancel_ai_stream,
             get_session,
             save_session,
             create_conversation,
