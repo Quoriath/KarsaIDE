@@ -226,7 +226,6 @@ pub async fn send_agent_message_stream(
     };
     
     let mut iteration = 0;
-    const MAX_ITERATIONS: i32 = 10;
     
     let system_msg = messages.first().filter(|m| m.role == "system").cloned();
     let user_msg = messages.last().filter(|m| m.role == "user").cloned();
@@ -235,13 +234,6 @@ pub async fn send_agent_message_stream(
     loop {
         iteration += 1;
         log::info!("=== Agent iteration {} ===", iteration);
-        
-        if iteration > MAX_ITERATIONS {
-            log::warn!("Max iterations reached, stopping");
-            let _ = app.emit("ai-stream-chunk", "\n\n*Saya tidak bisa menyelesaikan tugas ini. Silakan coba lagi dengan pertanyaan yang lebih spesifik.*");
-            let _ = app.emit("ai-stream-done", ());
-            return Ok(());
-        }
         
         if client.is_cancelled().await {
             let _ = app.emit("ai-stream-done", ());
