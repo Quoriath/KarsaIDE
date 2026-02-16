@@ -31,8 +31,8 @@
   // Streaming Buffers
   let streamingContent = $state(''); 
   let streamingReasoning = $state('');
-  let streamingTools = $state([]); // Array of {name, arguments, executing, result, error}
-  let currentToolIndex = $state(0);
+  let streamingSegments = $state([]); // Array of {type: 'text'|'tool', content/name/args/result}
+  let currentSegmentText = $state(''); // Accumulate text before tool
   
   // UI State
   let editingTitle = $state(false);
@@ -57,6 +57,7 @@
     // Event Listeners
     const unlistenChunk = await listen('ai-stream-chunk', (event) => {
       const chunk = typeof event.payload === 'string' ? event.payload : '';
+      currentSegmentText += chunk;
       streamingContent += chunk;
       scrollToBottom();
     });
@@ -69,36 +70,49 @@
 
     const unlistenReasoningComplete = await listen('ai-reasoning-complete', (event) => {
       const reasoning = typeof event.payload === 'string' ? event.payload : '';
-      streamingReasoning = reasoning; // Set complete reasoning
+      streamingReasoning = reasoning;
       scrollToBottom();
     });
 
     const unlistenToolCall = await listen('ai-tool-call', (event) => {
       const toolCall = event.payload;
-      streamingTools = [...streamingTools, {
-        name: toolCall.name, 
+      
+      // Save accumulated text as segment
+      if (currentSegmentText.trim()) {
+        streamingSegments = [...streamingSegments, {
+          type: 'text',
+          content: currentSegmentText
+        }];
+        currentSegmentText = '';
+      }
+      
+      // Add tool segment
+      streamingSegments = [...streamingSegments, {
+        type: 'tool',
+        name: toolCall.name,
         arguments: toolCall.arguments,
         executing: true,
         result: null,
         error: null
       }];
-      currentToolIndex = streamingTools.length - 1;
+      
       scrollToBottom();
     });
 
     const unlistenToolResult = await listen('ai-tool-result', (event) => {
       const payload = event.payload;
-      // Find the executing tool and update it
-      streamingTools = streamingTools.map((tool, index) => {
-        if (tool.executing && tool.name === payload.name) {
+      
+      // Update last tool segment
+      streamingSegments = streamingSegments.map((seg, index) => {
+        if (seg.type === 'tool' && seg.executing && seg.name === payload.name) {
           return {
-            ...tool,
+            ...seg,
             executing: false,
             result: payload.isError ? null : payload.result,
             error: payload.isError ? payload.error : null
           };
         }
-        return tool;
+        return seg;
       });
       scrollToBottom();
     });
@@ -107,14 +121,20 @@
       const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       
       if (isLoading) {
-        // Create the assistant message with tools and content
-        const completedTools = streamingTools.filter(t => !t.executing);
+        // Add final text segment if any
+        if (currentSegmentText.trim()) {
+          streamingSegments = [...streamingSegments, {
+            type: 'text',
+            content: currentSegmentText
+          }];
+        }
         
+        // Create message with segments
         messages = [...messages, {
           role: 'assistant',
           content: streamingContent || '',
           reasoning: streamingReasoning || '',
-          tools: completedTools,
+          segments: streamingSegments,
           timestamp
         }];
         
@@ -127,8 +147,10 @@
       // Reset state
       streamingContent = '';
       streamingReasoning = '';
-      streamingTools = [];
-      currentToolIndex = 0;
+      streamingSegments = [];
+      currentSegmentText = '';
+      streamingSegments = [];
+      currentSegmentText = '';
       isLoading = false;
       scrollToBottom();
     });
@@ -258,13 +280,22 @@
   async function stopGeneration() {
     try {
       await invoke('cancel_ai_stream');
-      if (streamingContent) {
+      if (streamingContent || streamingSegments.length > 0) {
         const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        // Add final text if any
+        if (currentSegmentText.trim()) {
+          streamingSegments = [...streamingSegments, {
+            type: 'text',
+            content: currentSegmentText
+          }];
+        }
+        
         messages = [...messages, { 
           role: 'assistant', 
           content: streamingContent + '\n\n*[Stopped]*', 
           reasoning: streamingReasoning,
-          tools: streamingTools.filter(t => !t.executing), 
+          segments: streamingSegments,
           timestamp 
         }];
         await saveMessage('assistant', streamingContent);
@@ -274,8 +305,8 @@
     }
     streamingContent = '';
     streamingReasoning = '';
-    streamingTools = [];
-    currentToolIndex = 0;
+    streamingSegments = [];
+    currentSegmentText = '';
     isLoading = false;
   }
 
@@ -308,8 +339,8 @@
     // Reset streaming state
     streamingContent = ''; 
     streamingReasoning = '';
-    streamingTools = [];
-    currentToolIndex = 0;
+    streamingSegments = []; currentSegmentText = "";
+    
     
     messages = [...messages, { role: 'user', content: userMessage, timestamp }];
     isLoading = true;
@@ -358,8 +389,8 @@
     isLoading = true;
     streamingContent = '';
     streamingReasoning = '';
-    streamingTools = [];
-    currentToolIndex = 0;
+    streamingSegments = []; currentSegmentText = "";
+    
     
     try {
       const cwd = fsStore.activeWorkspace || '.';
@@ -543,26 +574,38 @@
                 {#if msg.reasoning}
                   <ThinkingBlock content={msg.reasoning} isStreaming={false} />
                 {/if}
-                {#if msg.tools && msg.tools.length > 0}
-                  {#each msg.tools as tool}
-                    <MCPToolCall 
-                      toolName={tool.name} 
-                      arguments={tool.arguments}
-                      result={tool.result}
-                      error={tool.error}
-                      executing={false}
-                    />
+                
+                <!-- Render segments inline -->
+                {#if msg.segments && msg.segments.length > 0}
+                  {#each msg.segments as segment}
+                    {#if segment.type === 'text'}
+                      <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm mb-2">
+                        <MarkdownRenderer content={segment.content} />
+                      </div>
+                    {:else if segment.type === 'tool'}
+                      <div class="mb-2">
+                        <MCPToolCall 
+                          toolName={segment.name} 
+                          arguments={segment.arguments}
+                          result={segment.result}
+                          error={segment.error}
+                          executing={false}
+                        />
+                      </div>
+                    {/if}
                   {/each}
+                {:else}
+                  <!-- Fallback for old messages without segments -->
+                  <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text relative bg-card border border-border text-card-foreground rounded-tl-sm")}>
+                    <MarkdownRenderer content={msg.content} />
+                  </div>
                 {/if}
+              {:else}
+                <!-- User message -->
+                <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text relative bg-primary text-primary-foreground rounded-tr-sm")}>
+                  <div class="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div>
+                </div>
               {/if}
-              
-              <div class={cn("rounded-2xl px-6 py-4 text-sm shadow-sm transition-all hover:shadow-md select-text relative", msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-card border border-border text-card-foreground rounded-tl-sm")}>
-                {#if msg.role === 'assistant'} 
-                  <MarkdownRenderer content={msg.content} /> 
-                {:else} 
-                  <div class="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div> 
-                {/if}
-              </div>
               
               <!-- Message Actions -->
               <div class={cn("flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity", msg.role === 'user' ? "flex-row-reverse" : "")}>
@@ -588,7 +631,7 @@
         {/each}
 
          <!-- Streaming Block -->
-         {#if isLoading || streamingContent || streamingReasoning || streamingTools.length > 0}
+         {#if isLoading || streamingContent || streamingReasoning || streamingSegments.length > 0}
            <div class="flex gap-4 max-w-4xl mx-auto animate-in fade-in duration-300">
               <div class="w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center shrink-0">
                 <Bot size={18} class="text-muted-foreground" />
@@ -598,10 +641,8 @@
                    Karsa 
                    {#if isLoading}
                      <span class="text-[10px] opacity-50">
-                       {#if streamingTools.some(t => t.executing)}
+                       {#if streamingSegments.some(s => s.type === 'tool' && s.executing)}
                          Running tools...
-                       {:else if streamingTools.length > 0 && !streamingContent}
-                         Processing...
                        {:else if streamingReasoning}
                          Thinking...
                        {:else}
@@ -622,28 +663,34 @@
                    <ThinkingBlock content={streamingReasoning} isStreaming={true} />
                  {/if}
 
-                 {#if streamingTools.length > 0}
-                   <div class="w-full mb-2">
-                     {#each streamingTools as tool}
+                 <!-- Render segments inline -->
+                 {#each streamingSegments as segment}
+                   {#if segment.type === 'text'}
+                     <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm w-full mb-2">
+                       <MarkdownRenderer content={segment.content} />
+                     </div>
+                   {:else if segment.type === 'tool'}
+                     <div class="w-full mb-2">
                        <MCPToolCall 
-                         toolName={tool.name} 
-                         arguments={tool.arguments}
-                         result={tool.result}
-                         error={tool.error}
-                         executing={tool.executing}
+                         toolName={segment.name} 
+                         arguments={segment.arguments}
+                         result={segment.result}
+                         error={segment.error}
+                         executing={segment.executing}
                        />
-                     {/each}
-                   </div>
-                 {/if}
+                     </div>
+                   {/if}
+                 {/each}
                  
-                 {#if streamingContent}
+                 <!-- Current streaming text -->
+                 {#if currentSegmentText}
                    <div class="bg-card border border-border text-card-foreground rounded-2xl rounded-tl-sm px-6 py-4 text-sm shadow-sm w-full">
-                      <MarkdownRenderer content={streamingContent} />
+                      <MarkdownRenderer content={currentSegmentText} />
                       {#if isLoading}
                         <span class="inline-block w-1.5 h-4 bg-primary align-middle ml-1 animate-pulse"></span>
                       {/if}
                    </div>
-                 {:else if isLoading && !streamingReasoning && streamingTools.length === 0}
+                 {:else if isLoading && !streamingReasoning && streamingSegments.length === 0}
                    <div class="flex items-center gap-2 text-muted-foreground py-2">
                      <Loader2 size={16} class="animate-spin" />
                      <span class="text-xs">Thinking...</span>
