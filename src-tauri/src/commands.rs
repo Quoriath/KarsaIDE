@@ -226,6 +226,8 @@ pub async fn send_agent_message_stream(
     };
     
     let mut iteration = 0;
+    const SOFT_LIMIT: i32 = 15; // Warning threshold
+    const HARD_LIMIT: i32 = 25; // Emergency stop
     
     let system_msg = messages.first().filter(|m| m.role == "system").cloned();
     let user_msg = messages.last().filter(|m| m.role == "user").cloned();
@@ -234,6 +236,19 @@ pub async fn send_agent_message_stream(
     loop {
         iteration += 1;
         log::info!("=== Agent iteration {} ===", iteration);
+        
+        // Soft warning
+        if iteration == SOFT_LIMIT {
+            log::warn!("Approaching iteration limit ({}), AI should conclude soon", SOFT_LIMIT);
+        }
+        
+        // Hard stop (emergency)
+        if iteration > HARD_LIMIT {
+            log::error!("Emergency stop: exceeded {} iterations", HARD_LIMIT);
+            let _ = app.emit("ai-stream-chunk", "\n\n*[Task terlalu kompleks - stopped after 25 iterations]*");
+            let _ = app.emit("ai-stream-done", ());
+            return Ok(());
+        }
         
         if client.is_cancelled().await {
             let _ = app.emit("ai-stream-done", ());
@@ -346,11 +361,16 @@ pub async fn send_agent_message_stream(
             
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 
-            // Execute tool
-            let tool_result = execute_mcp_tool(&state, tool_name, arguments.clone());
+            // Execute tool with timeout
+            let tool_result = tokio::time::timeout(
+                tokio::time::Duration::from_secs(30),
+                async {
+                    execute_mcp_tool(&state, tool_name, arguments.clone())
+                }
+            ).await;
             
             let (result_text, is_error) = match tool_result {
-                Ok(data) => {
+                Ok(Ok(data)) => {
                     let result_str = serde_json::to_string_pretty(&data).unwrap_or_else(|_| "null".to_string());
                     let truncated = if result_str.len() > 2000 {
                         format!("{}...\n\n[Result truncated: {} total chars]", &result_str[..2000], result_str.len())
@@ -361,7 +381,8 @@ pub async fn send_agent_message_stream(
                     };
                     (truncated, false)
                 }
-                Err(e) => (format!("Error: {}", e), true)
+                Ok(Err(e)) => (format!("Tool error: {}", e), true),
+                Err(_) => (format!("Timeout: Tool took longer than 30 seconds"), true),
             };
             
             // Emit result to frontend
