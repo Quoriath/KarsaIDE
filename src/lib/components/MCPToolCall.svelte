@@ -2,7 +2,7 @@
   import { 
     FileText, Search, List, Code, File, FolderOpen, 
     Loader2, CheckCircle2, XCircle, ChevronDown, AlertTriangle,
-    Play, Pause, RotateCcw
+    Play, Pause, RotateCcw, Copy, Check
   } from 'lucide-svelte';
   import { cn } from '../utils.js';
 
@@ -19,38 +19,12 @@
   
   let expanded = $state(false);
   let localConfirmed = $state(true);
+  let copied = $state(false);
   
   // Auto-expand on error
   $effect(() => {
     if (error) expanded = true;
   });
-  
-  const toolIcons = {
-    file_read: FileText,
-    file_read_range: FileText,
-    file_read_around: FileText,
-    list_files: FolderOpen,
-    list_symbols: Code,
-    search: Search,
-    search_advanced: Search,
-    get_project_map: List,
-    get_file_info: File,
-    get_dependencies: List,
-    file_write: FileText,
-    file_append: FileText,
-    file_delete: FileText,
-    file_move: FileText,
-    file_copy: FileText,
-    create_directory: FolderOpen,
-    smart_patch: Code,
-    analyze_file: Code,
-    git_status: FileText,
-    git_diff: FileText,
-    find_in_file: Search,
-    extract_code_block: Code,
-  };
-  
-  const Icon = toolIcons[toolName] || Code;
   
   // Destructive tools need confirmation
   const destructiveTools = ['file_delete', 'file_move', 'file_copy', 'smart_patch'];
@@ -78,6 +52,14 @@
   function handleCancel() {
     localConfirmed = false;
     onCancel?.();
+  }
+  
+  async function copyResult() {
+    if (!result) return;
+    const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    await navigator.clipboard.writeText(text);
+    copied = true;
+    setTimeout(() => copied = false, 2000);
   }
   
   const resultPreview = $derived(() => {
@@ -151,7 +133,18 @@
       <!-- Result -->
       {#if result || error}
         <div class="tool-section">
-          <div class="tool-section-label">{error ? 'Error' : 'Result'}</div>
+          <div class="tool-section-header">
+            <div class="tool-section-label">{error ? 'Error' : 'Result'}</div>
+            {#if result && !error}
+              <button class="btn-copy" onclick={copyResult} title="Copy result">
+                {#if copied}
+                  <Check size={12} />
+                {:else}
+                  <Copy size={12} />
+                {/if}
+              </button>
+            {/if}
+          </div>
           <pre class="tool-code" class:error>
             {error || resultPreview()}
           </pre>
@@ -312,13 +305,36 @@
     border-bottom: none;
   }
   
+  .tool-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.375rem;
+  }
+  
   .tool-section-label {
     font-size: 0.625rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: hsl(var(--muted-foreground));
-    margin-bottom: 0.375rem;
+  }
+  
+  .btn-copy {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    background: hsl(var(--muted) / 0.5);
+    color: hsl(var(--muted-foreground));
+    transition: all 0.15s;
+  }
+  
+  .btn-copy:hover {
+    background: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
   }
   
   .tool-code {

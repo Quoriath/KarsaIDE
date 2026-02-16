@@ -366,41 +366,6 @@ Examples:
         .to_string()
 }
 
-fn get_tool_usage_rules() -> String {
-    r#"⚠️ CRITICAL: ONE TOOL PER RESPONSE - STRICTLY ENFORCED ⚠️
-
-When you need to use a tool, follow this EXACT pattern:
-
-1. Explain what you'll do (in natural language)
-2. Call ONE tool using JSON format
-3. Wait for result (system will provide it)
-4. Analyze the result
-5. Continue your response OR call another tool if needed
-
-Tool Call Format:
-[{"name": "tool_name", "arguments": {"param": "value"}}]
-
-❌ WRONG (multiple tools):
-[{"name": "file_read", ...}, {"name": "search", ...}]
-
-✅ RIGHT (one tool):
-[{"name": "file_read", "arguments": {"path": "src/main.rs"}}]
-
-Natural Flow Example:
-"Saya akan check file tersebut:"
-[{"name": "file_read", "arguments": {"path": "main.rs"}}]
-[Wait for result - system provides it]
-"Dari file tersebut, saya lihat ada 3 functions..."
-
-Rules:
-- Explain BEFORE calling tool
-- Call ONLY ONE tool at a time
-- Wait for result before continuing
-- Analyze result and provide insights
-- For casual questions, respond directly without tools"#
-        .to_string()
-}
-
 // ============ TOOL IMPLEMENTATIONS ============
 
 struct FileReadTool;
