@@ -16,7 +16,8 @@
     .replace(/\*/g, '')       // Remove italic
     .trim();
   
-  const lines = cleanContent.split('\n').filter(l => l.trim());
+  const lines = cleanContent.split('
+').filter(l => l.trim());
   const preview = lines[0] || 'Thinking...';
 </script>
 

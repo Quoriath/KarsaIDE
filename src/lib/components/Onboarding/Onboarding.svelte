@@ -2,9 +2,13 @@
   import { invoke } from '@tauri-apps/api/core';
   import { onMount } from 'svelte';
   import { Check, Sparkles, Server, Zap, Globe, Key, RefreshCw } from 'lucide-svelte';
-  import { cn } from '../../utils.js';
-  import { configStore } from '../../stores/config.svelte.js';
+  import { configStore } from '$lib/stores/config.svelte.js';
   import ModelSelector from '../ModelSelector.svelte';
+  
+  // Inline cn function to avoid import issues
+  function cn(...classes) {
+    return classes.filter(Boolean).join(' ');
+  }
 
   let { onComplete } = $props();
   
@@ -16,6 +20,12 @@
   let isConnecting = $state(false);
   let connectionSuccess = $state(false);
   let error = $state('');
+
+  function handleKeydown(e) {
+    if (e.key === 'Enter' && !isConnecting && !connectionSuccess) {
+      handleConnect();
+    }
+  }
 
   function handleProviderChange(p) {
     provider = p;
@@ -29,25 +39,21 @@
   }
 
   async function handleConnect() {
+    if (isConnecting || connectionSuccess) return;
+    
     error = '';
     isConnecting = true;
-
-    const config = {
-      provider,
-      api_key: apiKey || null,
-      base_url: baseUrl,
-      model_name: selectedModel,
-      selectedModel: selectedModel // redundancy for store compat
-    };
+    connectionSuccess = false;
 
     try {
-      // Save config properly
+      console.log('Saving config...');
+      
       const fullConfig = {
         ai: {
-          provider: config.provider,
-          api_key: config.api_key,
-          base_url: config.base_url,
-          model_name: config.model_name,
+          provider: provider,
+          api_key: apiKey || null,
+          base_url: baseUrl,
+          model_name: selectedModel,
           custom_models: []
         },
         editor: {
@@ -78,26 +84,43 @@
       };
       
       await invoke('save_ai_config', { config: fullConfig });
+      console.log('Config saved');
       
-      // Also update frontend store
       configStore.updateAiConfig({
-        provider: config.provider,
-        apiKey: config.api_key,
-        baseUrl: config.base_url,
-        selectedModel: config.model_name
+        provider: provider,
+        apiKey: apiKey,
+        baseUrl: baseUrl,
+        selectedModel: selectedModel
       });
+      console.log('Store updated');
       
       connectionSuccess = true;
-      setTimeout(() => onComplete(), 1500);
+      isConnecting = false;
+      
+      // Close immediately
+      setTimeout(() => {
+        console.log('Calling onComplete');
+        onComplete();
+      }, 500);
+      
     } catch (e) {
+      console.error('Error:', e);
       error = e.toString();
-    } finally {
+      connectionSuccess = false;
       isConnecting = false;
     }
   }
 </script>
 
-<div class="fixed inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
+<div 
+  class="fixed inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300"
+  onclick={(e) => {
+    if (e.target === e.currentTarget) {
+      console.log('Clicked outside, closing onboarding');
+      onComplete();
+    }
+  }}
+>
   <div class="bg-card border border-border rounded-xl p-8 max-w-lg w-full mx-4 shadow-2xl relative overflow-hidden">
     
     <!-- Background Accents -->
@@ -163,6 +186,7 @@
                   <input 
                     type="password" 
                     bind:value={apiKey}
+                    onkeydown={handleKeydown}
                     placeholder="sk-..."
                     class="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all pl-10"
                   />
@@ -192,16 +216,28 @@
 
           <button 
             onclick={handleConnect}
-            disabled={isConnecting}
+            disabled={isConnecting || connectionSuccess}
             class="w-full bg-primary text-primary-foreground font-semibold py-2.5 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
           >
-            {#if isConnecting}
+            {#if connectionSuccess}
+              <Check size={16} />
+              Connected! Redirecting...
+            {:else if isConnecting}
               <div class="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></div>
               Connecting...
             {:else}
               Connect & Start
             {/if}
           </button>
+          
+          {#if connectionSuccess || isConnecting}
+            <button 
+              onclick={() => onComplete()}
+              class="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Skip and continue →
+            </button>
+          {/if}
         </div>
       {/if}
     </div>

@@ -1,34 +1,17 @@
-import { writable, derived } from 'svelte/store';
+import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 
-export interface ChatMessage {
-  role: string;
-  content: string;
-  timestamp: number;
-  thinking?: string;
-  toolCalls?: any[];
-  toolResults?: any[];
-}
-
-export interface ChatSession {
-  id: string;
-  workspace: string | null;
-  messages: ChatMessage[];
-  created_at: number;
-  updated_at: number;
-}
-
 function createChatHistoryStore() {
-  const { subscribe, set, update } = writable<ChatSession[]>([]);
-  const currentSession = writable<ChatSession | null>(null);
+  const { subscribe, set, update } = writable([]);
+  const currentSession = writable(null);
   
   return {
     subscribe,
     currentSession,
     
-    async load(workspace: string | null) {
+    async load(workspace) {
       try {
-        const sessions = await invoke<ChatSession[]>('get_chat_sessions', { workspace });
+        const sessions = await invoke('get_chat_sessions', { workspace });
         set(sessions);
         return sessions;
       } catch (e) {
@@ -37,7 +20,7 @@ function createChatHistoryStore() {
       }
     },
     
-    async save(session: ChatSession) {
+    async save(session) {
       try {
         await invoke('save_chat_session', { session });
         update(sessions => {
@@ -54,7 +37,7 @@ function createChatHistoryStore() {
       }
     },
     
-    createSession(workspace: string | null): ChatSession {
+    createSession(workspace) {
       const now = Date.now();
       return {
         id: `session_${now}_${Math.random().toString(36).substr(2, 9)}`,
@@ -65,7 +48,7 @@ function createChatHistoryStore() {
       };
     },
     
-    async setCurrentSession(session: ChatSession | null) {
+    async setCurrentSession(session) {
       currentSession.set(session);
       if (session) {
         await this.save(session);
@@ -78,14 +61,14 @@ export const chatHistory = createChatHistoryStore();
 
 // Recent folders store
 function createRecentFoldersStore() {
-  const { subscribe, set } = writable<any[]>([]);
+  const { subscribe, set } = writable([]);
   
   return {
     subscribe,
     
     async load() {
       try {
-        const folders = await invoke<any[]>('get_recent_folders');
+        const folders = await invoke('get_recent_folders');
         set(folders);
         return folders;
       } catch (e) {
@@ -94,7 +77,7 @@ function createRecentFoldersStore() {
       }
     },
     
-    async add(path: string, name: string) {
+    async add(path, name) {
       try {
         await invoke('add_recent_folder', { path, name });
         await this.load();
@@ -109,14 +92,14 @@ export const recentFolders = createRecentFoldersStore();
 
 // Last workspace store
 function createLastWorkspaceStore() {
-  const { subscribe, set } = writable<string | null>(null);
+  const { subscribe, set } = writable(null);
   
   return {
     subscribe,
     
     async load() {
       try {
-        const workspace = await invoke<string | null>('get_last_workspace');
+        const workspace = await invoke('get_last_workspace');
         set(workspace);
         return workspace;
       } catch (e) {
@@ -125,7 +108,7 @@ function createLastWorkspaceStore() {
       }
     },
     
-    async save(path: string) {
+    async save(path) {
       try {
         await invoke('set_last_workspace', { path });
         set(path);

@@ -81,6 +81,8 @@ pub fn run() {
             get_last_workspace,
             save_chat_session,
             get_chat_sessions,
+            reveal_in_explorer,
+            get_file_metadata,
         ])
         .setup(|_app| {
             log::info!("Karsa IDE setup complete");

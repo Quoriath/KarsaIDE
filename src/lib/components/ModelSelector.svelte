@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { Search, RefreshCw, ChevronDown, Check, Cpu, Server, Sparkles } from 'lucide-svelte';
+  import { Search, RefreshCw, ChevronDown, Check, Box, Server } from 'lucide-svelte';
   import { cn } from '../utils.js';
   
   let { selectedModel = $bindable(), apiKey, onModelChange, className = '' } = $props();
@@ -14,6 +14,7 @@
   let error = $state('');
   let menuRef;
 
+  // Mock default models if fetch fails or no key
   const defaultModels = [
     { id: 'minimax/minimax-m2.5:free', name: 'Minimax M2.5' },
     { id: 'z-ai/glm-5:free', name: 'GLM-5' },
@@ -25,11 +26,17 @@
     isFetching = true;
     error = '';
     try {
+      // Try backend invoke
       const result = await invoke('fetch_kilo_models', { apiKey });
       models = result;
-      localStorage.setItem('kilo-models', JSON.stringify({ models: result, timestamp: Date.now() }));
+      
+      localStorage.setItem('kilo-models', JSON.stringify({
+        models: result,
+        timestamp: Date.now()
+      }));
     } catch (e) {
-      error = 'Offline Mode';
+      console.warn('Failed to fetch models, using defaults/cache', e);
+      error = 'Offline/Default Mode';
       if (models.length === 0) models = defaultModels;
     } finally {
       filteredModels = models;
@@ -41,6 +48,7 @@
     const cached = localStorage.getItem('kilo-models');
     if (cached) {
       const { models: cachedModels, timestamp } = JSON.parse(cached);
+      // Cache valid for 1 hour
       if (Date.now() - timestamp < 3600000) {
         models = cachedModels;
         filteredModels = cachedModels;
@@ -63,13 +71,16 @@
   
   onMount(() => {
     if (!loadCachedModels()) {
+      // Only auto-fetch if we have a key, otherwise wait for user/defaults
       if (apiKey) fetchModels();
       else models = defaultModels;
     }
   });
 
   function handleClickOutside(event) {
-    if (menuRef && !menuRef.contains(event.target)) isOpen = false;
+    if (menuRef && !menuRef.contains(event.target)) {
+      isOpen = false;
+    }
   }
 
   $effect(() => {
@@ -81,57 +92,51 @@
 
 <div class={cn("relative", className)} bind:this={menuRef}>
   <button 
-    class="flex items-center gap-2.5 px-3.5 py-2 bg-muted/20 hover:bg-muted/40 border border-border/40 hover:border-primary/40 rounded-xl w-full transition-all group shadow-sm active:scale-[0.98]"
+    class="flex items-center gap-2 px-3 py-1.5 bg-muted/30 hover:bg-muted border border-border hover:border-primary/30 rounded-lg w-full transition-all group"
     onclick={() => isOpen = !isOpen}
+    title="Select AI Model"
   >
-    <div class="p-1 rounded-md bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
-       <Cpu size={14} class="group-hover:scale-110 transition-transform" />
-    </div>
-    <div class="flex-1 text-left min-w-0">
-       <div class="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-0.5 opacity-50">AI Model</div>
-       <div class="truncate text-xs font-bold text-foreground leading-none">{selectedModel?.split('/').pop() || 'Select model'}</div>
-    </div>
-    <ChevronDown size={14} class={cn("text-muted-foreground/50 transition-transform duration-300", isOpen ? 'rotate-180' : '')} />
+    <Box size={14} class="text-primary group-hover:scale-110 transition-transform" />
+    <span class="flex-1 text-left truncate text-xs font-medium text-foreground">{selectedModel || 'Select model'}</span>
+    <ChevronDown size={14} class={cn("text-muted-foreground transition-transform duration-200", isOpen ? 'rotate-180' : '')} />
   </button>
   
   {#if isOpen}
-    <div class="absolute top-[110%] left-0 w-full min-w-[280px] bg-popover/95 backdrop-blur-2xl border border-border/60 rounded-2xl shadow-2xl z-50 flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden origin-top ring-1 ring-black/5">
+    <div class="absolute top-full mt-1 w-full min-w-[240px] bg-popover border border-border rounded-lg shadow-xl z-50 flex flex-col animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
       
       <!-- Search & Refresh -->
-      <div class="p-3 border-b border-border/40 flex gap-2 bg-muted/5">
+      <div class="p-2 border-b border-border flex gap-2 bg-muted/10">
         <div class="flex-1 relative">
-          <Search size={12} class="absolute left-2.5 top-2.5 text-muted-foreground/40" />
+          <Search size={12} class="absolute left-2 top-2 text-muted-foreground" />
           <input 
             type="text"
             bind:value={searchQuery}
-            placeholder="Search models..."
-            class="w-full pl-8 pr-2 py-2 bg-background/50 border border-border/40 rounded-lg text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary/40 outline-none transition-all"
+            placeholder="Search..."
+            class="w-full pl-7 pr-2 py-1.5 bg-background border border-border rounded text-xs focus:ring-1 focus:ring-primary outline-none"
             onclick={(e) => e.stopPropagation()}
           />
         </div>
         <button 
           onclick={(e) => { e.stopPropagation(); fetchModels(); }}
           disabled={isFetching}
-          class="p-2 bg-background/50 border border-border/40 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-all disabled:opacity-50"
+          class="p-1.5 bg-background border border-border hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
+          title="Refresh models"
         >
-          <RefreshCw size={14} class={isFetching ? 'animate-spin' : ''} />
+          <RefreshCw size={12} class={isFetching ? 'animate-spin' : ''} />
         </button>
       </div>
       
       <!-- Models List -->
-      <div class="overflow-y-auto max-h-72 scrollbar-thin scrollbar-thumb-muted p-1.5 space-y-1">
+      <div class="overflow-y-auto max-h-60 scrollbar-thin scrollbar-thumb-muted p-1">
         {#if filteredModels.length === 0}
-          <div class="p-8 text-muted-foreground text-xs text-center flex flex-col items-center gap-3">
-             <Sparkles size={24} class="opacity-20" />
-             <span class="italic">No models matching your search</span>
-          </div>
+          <div class="p-3 text-muted-foreground text-xs text-center italic">No models found</div>
         {:else}
-          <div class="text-[9px] font-black text-muted-foreground px-3 py-2 uppercase tracking-[0.2em] opacity-50">Select Intelligence</div>
+          <div class="text-[10px] font-semibold text-muted-foreground px-2 py-1 uppercase tracking-wider">Available</div>
           {#each filteredModels as model}
             <button
               class={cn(
-                "w-full px-3 py-2.5 text-left flex items-center gap-3 rounded-xl transition-all group",
-                selectedModel === model.id ? "bg-primary/10 text-primary shadow-inner" : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
+                "w-full px-2 py-1.5 text-left flex items-center gap-2 rounded text-sm transition-colors group",
+                selectedModel === model.id ? "bg-primary/10 text-primary" : "hover:bg-muted/50 text-foreground"
               )}
               onclick={() => {
                 selectedModel = model.id;
@@ -139,20 +144,13 @@
                 onModelChange?.(model);
               }}
             >
-              <div class={cn(
-                "w-8 h-8 rounded-lg flex items-center justify-center border transition-all",
-                selectedModel === model.id ? "bg-primary text-primary-foreground border-primary/20 shadow-lg shadow-primary/20" : "bg-background border-border/40 group-hover:border-primary/30"
-              )}>
-                 <Server size={14} />
-              </div>
+              <Server size={14} class={cn("opacity-70", selectedModel === model.id ? "text-primary" : "text-muted-foreground")} />
               <div class="flex-1 flex flex-col min-w-0">
-                 <span class="truncate text-xs font-bold leading-tight">{model.name}</span>
-                 <span class="truncate text-[9px] opacity-40 font-mono tracking-tighter mt-0.5">{model.id}</span>
+                 <span class="truncate text-xs font-medium">{model.name}</span>
+                 <span class="truncate text-[10px] opacity-60 font-mono">{model.id}</span>
               </div>
               {#if selectedModel === model.id}
-                <div class="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
-                   <Check size={12} class="text-primary" />
-                </div>
+                <Check size={12} class="text-primary" />
               {/if}
             </button>
           {/each}
@@ -160,9 +158,9 @@
       </div>
       
       <!-- Footer -->
-      <div class="p-2 border-t border-border/40 text-[9px] text-muted-foreground bg-muted/5 flex justify-between px-4 font-bold uppercase tracking-widest">
-        <span>{filteredModels.length} Entities</span>
-        <span class={cn(error ? 'text-orange-500' : 'text-green-500 opacity-50')}>{error || 'Secure Sync'}</span>
+      <div class="p-1.5 border-t border-border text-[10px] text-muted-foreground bg-muted/10 flex justify-between px-3">
+        <span>{filteredModels.length} models</span>
+        <span class="opacity-50">{error ? 'Default' : 'Synced'}</span>
       </div>
     </div>
   {/if}

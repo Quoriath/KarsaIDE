@@ -1,5 +1,5 @@
 use crate::ai_client::{AIClient, ModelInfo};
-use crate::config_manager::{AIConfig, KarsaConfig, SessionData, load_config, save_config, update_session};
+use crate::config_manager::{AIConfig, KarsaConfig, SessionData, RecentWorkspace, load_config, save_config, update_session};
 use crate::terminal::{Terminal, ShellInfo};
 use crate::database::{Database, Conversation, Message};
 use crate::mcp::{MCPCore, MCPRequest, MCPResponse};
@@ -867,35 +867,45 @@ pub fn force_reindex(
 
 #[command]
 pub fn add_recent_folder(path: String, name: String) -> Result<(), String> {
-    let storage = crate::storage::StorageManager::new()
-        .map_err(|e| format!("Failed to init storage: {}", e))?;
-    storage.add_recent_folder(path, name)
-        .map_err(|e| format!("Failed to add recent folder: {}", e))
+    let mut config = load_config();
+    let timestamp = chrono::Utc::now().timestamp();
+    
+    // Save as last workspace
+    config.session.last_workspace = Some(path.clone());
+    
+    // Remove if exists
+    config.session.recent_workspaces.retain(|w| w.path != path);
+    
+    // Add to front
+    config.session.recent_workspaces.insert(0, RecentWorkspace {
+        path,
+        name,
+        last_opened: timestamp,
+    });
+    
+    // Keep last 10
+    config.session.recent_workspaces.truncate(10);
+    
+    save_config(&config).map_err(|e| e.to_string())
 }
 
 #[command]
-pub fn get_recent_folders() -> Result<Vec<crate::storage::RecentFolder>, String> {
-    let storage = crate::storage::StorageManager::new()
-        .map_err(|e| format!("Failed to init storage: {}", e))?;
-    let app_storage = storage.load()
-        .map_err(|e| format!("Failed to load storage: {}", e))?;
-    Ok(app_storage.recent_folders)
+pub fn get_recent_folders() -> Result<Vec<RecentWorkspace>, String> {
+    let config = load_config();
+    Ok(config.session.recent_workspaces)
 }
 
 #[command]
 pub fn set_last_workspace(path: String) -> Result<(), String> {
-    let storage = crate::storage::StorageManager::new()
-        .map_err(|e| format!("Failed to init storage: {}", e))?;
-    storage.set_last_workspace(path)
-        .map_err(|e| format!("Failed to set last workspace: {}", e))
+    let mut config = load_config();
+    config.session.last_workspace = Some(path);
+    save_config(&config).map_err(|e| e.to_string())
 }
 
 #[command]
 pub fn get_last_workspace() -> Result<Option<String>, String> {
-    let storage = crate::storage::StorageManager::new()
-        .map_err(|e| format!("Failed to init storage: {}", e))?;
-    storage.get_last_workspace()
-        .map_err(|e| format!("Failed to get last workspace: {}", e))
+    let config = load_config();
+    Ok(config.session.last_workspace)
 }
 
 #[command]

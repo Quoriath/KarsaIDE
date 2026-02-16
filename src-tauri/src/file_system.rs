@@ -96,7 +96,25 @@ pub fn create_file(path: String, content: Option<String>) -> Result<(), String> 
 #[command]
 pub fn copy_path(source: String, destination: String) -> Result<(), String> {
     let src = PathBuf::from(&source);
-    let dst = PathBuf::from(&destination);
+    let mut dst = PathBuf::from(&destination);
+
+    // Smart duplicate: If dest exists, append " copy", " copy 2", etc.
+    if dst.exists() {
+        let file_stem = dst.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let extension = dst.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+        let parent = dst.parent().unwrap_or(&PathBuf::from("/")).to_path_buf();
+        
+        let mut counter = 1;
+        while dst.exists() {
+            let new_name = if extension.is_empty() {
+                format!("{} copy {}", file_stem, if counter == 1 { "".to_string() } else { counter.to_string() })
+            } else {
+                format!("{} copy {}.{}", file_stem, if counter == 1 { "".to_string() } else { counter.to_string() }, extension)
+            };
+            dst = parent.join(new_name.trim());
+            counter += 1;
+        }
+    }
     
     if src.is_dir() {
         copy_dir_recursive(&src, &dst).map_err(|e| format!("Failed to copy directory: {}", e))
@@ -104,6 +122,71 @@ pub fn copy_path(source: String, destination: String) -> Result<(), String> {
         fs::copy(&src, &dst).map_err(|e| format!("Failed to copy file: {}", e))?;
         Ok(())
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileMetadata {
+    pub size: u64,
+    pub created: Option<u64>,
+    pub modified: Option<u64>,
+    pub readonly: bool,
+}
+
+#[command]
+pub fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
+    let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+    
+    let created = meta.created().ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+        
+    let modified = meta.modified().ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+
+    Ok(FileMetadata {
+        size: meta.len(),
+        created,
+        modified,
+        readonly: meta.permissions().readonly(),
+    })
+}
+
+#[command]
+pub fn reveal_in_explorer(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let path_buf = PathBuf::from(&path);
+        let dir = if path_buf.is_dir() {
+            &path
+        } else {
+            path_buf.parent().unwrap().to_str().unwrap()
+        };
+        std::process::Command::new("xdg-open")
+            .arg(dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {

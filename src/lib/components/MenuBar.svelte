@@ -2,7 +2,7 @@
   import { fsStore } from '../stores/fileSystem.svelte.js';
   import { themeStore } from '../stores/theme.svelte.js';
   import { cn } from '../utils.js';
-  import { ChevronDown, Check, FileText, Settings, ExternalLink } from 'lucide-svelte';
+  import { Menu, ChevronDown, Check, FolderOpen, Save, Settings as SettingsIcon, LogOut, FileCode } from 'lucide-svelte';
 
   let { onOpenSettings } = $props();
 
@@ -11,27 +11,43 @@
 
   const menus = [
     { label: 'File', items: [
-      { label: 'New File', shortcut: 'Ctrl+N', action: () => alert('New File') },
-      { label: 'Open File...', shortcut: 'Ctrl+O', action: () => fsStore.openFile() },
-      { label: 'Open Folder...', shortcut: 'Ctrl+K O', action: () => fsStore.setProjectDir() },
+      { label: 'New File', icon: FileCode, action: () => alert('New File') },
+      { label: 'Open Folder...', icon: FolderOpen, action: () => fsStore.setProjectDir() },
+      { label: 'Save', icon: Save, action: () => fsStore.saveActiveFile() },
       { separator: true },
-      { label: 'Settings', icon: Settings, action: () => onOpenSettings && onOpenSettings() },
+      { label: 'Settings', icon: SettingsIcon, action: () => onOpenSettings && onOpenSettings() },
+      { label: 'Exit', icon: LogOut, action: () => window.close() },
+    ]},
+    { label: 'Edit', items: [
+      { label: 'Undo', action: () => alert('Undo') },
+      { label: 'Redo', action: () => alert('Redo') },
+      { separator: true },
+      { label: 'Cut', action: () => alert('Cut') },
+      { label: 'Copy', action: () => alert('Copy') },
+      { label: 'Paste', action: () => alert('Paste') },
     ]},
     { label: 'View', items: [
-      { label: 'Sidebar', shortcut: 'Ctrl+B', action: () => alert('Sidebar') },
-      { label: 'Intelligence', shortcut: 'Ctrl+L', action: () => alert('Chat') },
+      { label: 'Toggle Sidebar', action: () => alert('Toggle Sidebar') },
+      { label: 'Toggle Chat', action: () => alert('Toggle Chat') },
       { separator: true },
-      { label: 'Theme Mode', action: () => onOpenSettings && onOpenSettings('appearance') },
-    ]}
+      { label: 'Reset Zoom', action: () => alert('Reset Zoom') },
+    ]},
+    { label: 'Help', items: [
+      { label: 'Documentation', action: () => alert('Documentation') },
+      { label: 'Changelog', action: () => alert('Changelog') },
+      { separator: true },
+      { label: 'About Karsa', action: () => alert('About') },
+    ]},
   ];
 
   function toggleMenu(label) {
-    if (activeMenu === label) activeMenu = null;
-    else activeMenu = label;
+    activeMenu = activeMenu === label ? null : label;
   }
 
   function handleClickOutside(event) {
-    if (menuRef && !menuRef.contains(event.target)) activeMenu = null;
+    if (menuRef && !menuRef.contains(event.target)) {
+      activeMenu = null;
+    }
   }
 
   if (typeof window !== 'undefined') {
@@ -39,47 +55,54 @@
   }
 </script>
 
-<div class="h-8 bg-background/50 backdrop-blur-md border-b border-border/20 flex items-center px-2 select-none z-50 text-[11px]" bind:this={menuRef}>
-  {#each menus as menu}
-    <div class="relative">
-      <button 
-        class={cn(
-          "px-2.5 py-1 rounded-md transition-all font-bold tracking-tight uppercase",
-          activeMenu === menu.label ? "bg-primary/10 text-primary" : "text-muted-foreground/70 hover:text-foreground"
-        )}
-        onclick={(e) => { e.stopPropagation(); toggleMenu(menu.label); }}
-      >
-        {menu.label}
-      </button>
-      
-      {#if activeMenu === menu.label}
-        <div class="absolute top-[110%] left-0 min-w-[180px] bg-popover/90 backdrop-blur-2xl border border-border/40 rounded-xl shadow-2xl py-1.5 z-[100] animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-black/5">
-          {#each menu.items as item}
-            {#if item.separator}
-              <div class="my-1 h-px bg-border/20 mx-2"></div>
-            {:else}
-              <button
-                class="w-full text-left px-3 py-1.5 hover:bg-primary/10 hover:text-primary text-popover-foreground flex items-center justify-between group mx-1 rounded-lg w-[calc(100%-8px)]"
-                onclick={() => { item.action(); activeMenu = null; }}
-              >
-                <span class="font-medium text-xs">{item.label}</span>
-                {#if item.shortcut}
-                  <span class="text-[8px] font-black text-muted-foreground/30 group-hover:text-primary/40 uppercase tracking-tighter ml-4">{item.shortcut}</span>
-                {/if}
-              </button>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/each}
+<div class="h-9 bg-background/50 backdrop-blur-md border-b border-border/40 flex items-center px-3 select-none z-50 transition-all duration-300" bind:this={menuRef}>
+  <div class="flex items-center gap-1">
+    {#each menus as menu}
+      <div class="relative">
+        <button 
+          class={cn(
+            "px-3 py-1.5 rounded-lg text-[11.5px] font-medium transition-all duration-200",
+            activeMenu === menu.label 
+              ? "bg-primary/10 text-primary" 
+              : "text-muted-foreground/70 hover:bg-muted/50 hover:text-foreground"
+          )}
+          onclick={(e) => { e.stopPropagation(); toggleMenu(menu.label); }}
+        >
+          {menu.label}
+        </button>
+        
+        {#if activeMenu === menu.label}
+          <div class="absolute top-full left-0 mt-1.5 min-w-[200px] bg-background/95 backdrop-blur-xl border border-border/60 rounded-xl shadow-2xl py-1.5 z-[100] animate-in fade-in zoom-in-95 duration-200 origin-top-left">
+            {#each menu.items as item}
+              {#if item.separator}
+                <div class="h-[1px] bg-border/40 my-1 mx-2"></div>
+              {:else}
+                <button
+                  class="w-full text-left px-3 py-1.5 hover:bg-primary/10 hover:text-primary text-[11.5px] flex items-center gap-3 group transition-colors mx-1 rounded-md w-[calc(100%-8px)]"
+                  onclick={() => { item.action(); activeMenu = null; }}
+                >
+                  {#if item.icon}
+                    <item.icon size={14} class="opacity-50 group-hover:opacity-100" />
+                  {:else}
+                    <div class="w-3.5"></div>
+                  {/if}
+                  <span class="flex-1 font-medium">{item.label}</span>
+                </button>
+              {/if}
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/each}
+  </div>
 
   <div class="flex-1"></div>
   
-  <div class="flex items-center gap-3 px-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">
-     <div class="flex items-center gap-1.5 group cursor-default">
-        <div class="w-1 h-1 rounded-full bg-green-500"></div>
-        <span class="group-hover:text-green-500/60 transition-colors tracking-tight">Sync Status: Optimal</span>
+  <!-- Status indicators -->
+  <div class="flex items-center gap-4 px-3">
+     <div class="flex items-center gap-1.5 opacity-40 hover:opacity-100 transition-opacity">
+        <span class="text-[9px] font-bold tracking-widest uppercase">Stability:</span>
+        <span class="text-[9px] font-bold text-green-500 uppercase">Alpha</span>
      </div>
   </div>
 </div>

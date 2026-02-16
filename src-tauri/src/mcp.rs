@@ -87,6 +87,7 @@ impl MCPCore {
         core.register_tool(Box::new(FileReadTool));
         core.register_tool(Box::new(FileReadRangeTool));
         core.register_tool(Box::new(FileReadAroundTool));
+        core.register_tool(Box::new(MultiFileReadTool));
         core.register_tool(Box::new(ListFilesTool));
         core.register_tool(Box::new(GetFileInfoTool));
         core.register_tool(Box::new(ListSymbolsTool));
@@ -95,6 +96,7 @@ impl MCPCore {
         // File operations - Write
         core.register_tool(Box::new(FileWriteTool));
         core.register_tool(Box::new(FileAppendTool));
+        core.register_tool(Box::new(MultiFileEditTool));
         core.register_tool(Box::new(FileDeleteTool));
         core.register_tool(Box::new(FileMoveTool));
         core.register_tool(Box::new(FileCopyTool));
@@ -2115,6 +2117,216 @@ impl MCPTool for GitDiffTool {
         Ok(serde_json::json!({
             "diff": diff,
             "has_changes": !diff.is_empty()
+        }))
+    }
+}
+
+// Multi-file read tool
+struct MultiFileReadTool;
+
+impl MCPTool for MultiFileReadTool {
+    fn name(&self) -> &str {
+        "multi_file_read"
+    }
+    fn description(&self) -> &str {
+        "Read multiple files at once. Efficient batch reading."
+    }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "paths".to_string(),
+                param_type: "array".to_string(),
+                description: "Array of file paths to read".to_string(),
+                required: true,
+                default: None,
+                enum_values: None,
+            },
+            ToolParameter {
+                name: "start_line".to_string(),
+                param_type: "number".to_string(),
+                description: "Start line (default: 1)".to_string(),
+                required: false,
+                default: Some(serde_json::json!(1)),
+                enum_values: None,
+            },
+            ToolParameter {
+                name: "end_line".to_string(),
+                param_type: "number".to_string(),
+                description: "End line (default: all lines)".to_string(),
+                required: false,
+                default: None,
+                enum_values: None,
+            },
+        ]
+    }
+    fn category(&self) -> ToolCategory {
+        ToolCategory::ReadOnly
+    }
+    fn execute(&self, params: serde_json::Value, workspace: Option<&str>) -> Result<serde_json::Value> {
+        let paths_array = if let Some(arr) = params["paths"].as_array() {
+            arr.clone()
+        } else if let Some(s) = params["paths"].as_str() {
+            match serde_json::from_str::<Vec<String>>(s) {
+                Ok(parsed) => parsed.into_iter().map(|p| serde_json::Value::String(p)).collect(),
+                Err(_) => return Err(anyhow::anyhow!("paths must be an array of strings")),
+            }
+        } else {
+            return Err(anyhow::anyhow!("paths parameter is required"));
+        };
+        
+        let start = params["start_line"].as_u64().unwrap_or(1).max(1) as usize;
+        let end = params["end_line"].as_u64().map(|v| v as usize).unwrap_or(usize::MAX);
+        
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+        
+        for path_val in &paths_array {
+            let path_str = path_val.as_str().ok_or(anyhow::anyhow!("Each path must be a string"))?;
+            
+            let full_path = if std::path::Path::new(path_str).is_absolute() {
+                path_str.to_string()
+            } else if let Some(ws) = workspace {
+                format!("{}/{}", ws, path_str)
+            } else {
+                path_str.to_string()
+            };
+            
+            match std::fs::read_to_string(&full_path) {
+                Ok(content) => {
+                    let lines: Vec<&str> = content.lines().collect();
+                    let total = lines.len();
+                    let actual_end = end.min(total);
+                    let selected_lines = if start <= total {
+                        &lines[(start - 1)..actual_end]
+                    } else {
+                        &[]
+                    };
+                    let raw_content = selected_lines.join("\n");
+                    
+                    results.push(serde_json::json!({
+                        "path": path_str,
+                        "content": raw_content,
+                        "start_line": start,
+                        "end_line": actual_end,
+                        "total_lines": total,
+                        "success": true
+                    }));
+                }
+                Err(e) => {
+                    errors.push(serde_json::json!({
+                        "path": path_str,
+                        "full_path": full_path,
+                        "error": e.to_string(),
+                        "success": false
+                    }));
+                }
+            }
+        }
+        
+        Ok(serde_json::json!({
+            "files": results,
+            "errors": errors,
+            "total_requested": paths_array.len(),
+            "total_success": results.len(),
+            "total_failed": errors.len()
+        }))
+    }
+}
+
+// Multi-file edit tool
+struct MultiFileEditTool;
+
+impl MCPTool for MultiFileEditTool {
+    fn name(&self) -> &str {
+        "multi_file_edit"
+    }
+    fn description(&self) -> &str {
+        "Edit multiple files at once with search-replace. Efficient batch editing."
+    }
+    fn parameters(&self) -> Vec<ToolParameter> {
+        vec![
+            ToolParameter {
+                name: "edits".to_string(),
+                param_type: "array".to_string(),
+                description: "Array of {path, search, replace} objects".to_string(),
+                required: true,
+                default: None,
+                enum_values: None,
+            },
+        ]
+    }
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Destructive
+    }
+    fn execute(&self, params: serde_json::Value, workspace: Option<&str>) -> Result<serde_json::Value> {
+        let edits_array = params["edits"].as_array()
+            .ok_or(anyhow::anyhow!("edits parameter must be an array"))?;
+        
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+        
+        for edit in edits_array {
+            let path_str = edit["path"].as_str()
+                .ok_or(anyhow::anyhow!("Each edit must have a 'path' field"))?;
+            let search = edit["search"].as_str()
+                .ok_or(anyhow::anyhow!("Each edit must have a 'search' field"))?;
+            let replace = edit["replace"].as_str()
+                .ok_or(anyhow::anyhow!("Each edit must have a 'replace' field"))?;
+            
+            let full_path = if std::path::Path::new(path_str).is_absolute() {
+                path_str.to_string()
+            } else if let Some(ws) = workspace {
+                format!("{}/{}", ws, path_str)
+            } else {
+                path_str.to_string()
+            };
+            
+            match std::fs::read_to_string(&full_path) {
+                Ok(content) => {
+                    let occurrences = content.matches(search).count();
+                    if occurrences == 0 {
+                        errors.push(serde_json::json!({
+                            "path": path_str,
+                            "error": "Search string not found",
+                            "success": false
+                        }));
+                        continue;
+                    }
+                    
+                    let new_content = content.replace(search, replace);
+                    match std::fs::write(&full_path, new_content) {
+                        Ok(_) => {
+                            results.push(serde_json::json!({
+                                "path": path_str,
+                                "occurrences": occurrences,
+                                "success": true
+                            }));
+                        }
+                        Err(e) => {
+                            errors.push(serde_json::json!({
+                                "path": path_str,
+                                "error": e.to_string(),
+                                "success": false
+                            }));
+                        }
+                    }
+                }
+                Err(e) => {
+                    errors.push(serde_json::json!({
+                        "path": path_str,
+                        "error": e.to_string(),
+                        "success": false
+                    }));
+                }
+            }
+        }
+        
+        Ok(serde_json::json!({
+            "results": results,
+            "errors": errors,
+            "total_requested": edits_array.len(),
+            "total_success": results.len(),
+            "total_failed": errors.len()
         }))
     }
 }

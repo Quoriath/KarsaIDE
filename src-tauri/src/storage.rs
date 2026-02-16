@@ -10,10 +10,22 @@ pub struct RecentFolder {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub result: Option<serde_json::Value>,
+    pub is_error: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
     pub timestamp: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,  // Thinking content
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,  // MCP tool calls
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,7 +67,7 @@ impl StorageManager {
         std::fs::create_dir_all(&storage_dir)?;
         
         Ok(Self {
-            storage_path: storage_dir.join("storage.json"),
+            storage_path: storage_dir.join("karsa_config.json"),
         })
     }
     
@@ -78,6 +90,9 @@ impl StorageManager {
     pub fn add_recent_folder(&self, path: String, name: String) -> Result<()> {
         let mut storage = self.load()?;
         let timestamp = chrono::Utc::now().timestamp();
+        
+        // Save as last workspace
+        storage.last_workspace = Some(path.clone());
         
         // Remove if already exists
         storage.recent_folders.retain(|f| f.path != path);

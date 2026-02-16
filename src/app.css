@@ -27,9 +27,11 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20 overflow-hidden h-screen w-screen;
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20;
+    background-attachment: fixed;
   }
 
+  /* Ultra-Minimalist Scrollbar */
   ::-webkit-scrollbar {
     width: 4px;
     height: 4px;
@@ -38,32 +40,87 @@
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-border/50 rounded-full;
+    @apply bg-border/20 rounded-full transition-colors;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/30;
+    @apply bg-muted-foreground/20;
   }
 }
 
 @layer components {
-  .bento-grid {
-    @apply grid grid-cols-12 auto-rows-[minmax(100px,auto)] gap-3;
-  }
-  
-  .bento-card {
-    @apply bg-card/30 border border-border/40 rounded-2xl backdrop-blur-md p-5 transition-all duration-300 hover:border-primary/30 hover:bg-muted/10 shadow-sm overflow-hidden relative;
+  .panel-solid {
+    @apply bg-background border border-border/40;
   }
 
   .glass {
-    @apply bg-background/60 backdrop-blur-xl border border-white/5;
+    @apply bg-background/60 backdrop-blur-xl border border-border/40;
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* REFINED COMPACT MARKDOWN RENDERING */
+  .markdown-body {
+    @apply text-[12.5px] leading-[1.45]; /* Slightly smaller and tighter */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  .markdown-body p { @apply mb-2 last:mb-0; }
+  
+  .markdown-body strong { @apply font-bold text-foreground; }
+  .markdown-body em { @apply italic text-muted-foreground/80; }
+  
+  /* Tables Support - More Compact */
+  .markdown-body table {
+    @apply w-full border-collapse mb-3 mt-1 text-left text-[11px] border border-border/30 rounded-lg overflow-hidden;
+    display: block;
+    overflow-x: auto;
+  }
+  .markdown-body thead { @apply bg-muted/10 border-b border-border/30 font-bold text-foreground; }
+  .markdown-body th, .markdown-body td { @apply px-2.5 py-1.5 border border-border/10 min-w-[60px]; }
+  .markdown-body tr:nth-child(even) { @apply bg-muted/5; }
+
+  /* Code Blocks - Tighter and Cleaner */
+  .markdown-body pre { 
+    @apply bg-black/40 p-0 rounded-lg overflow-hidden my-2.5 border border-border/30 max-w-full overflow-x-auto; 
+  }
+  .markdown-body pre code { 
+    @apply bg-transparent p-3 text-gray-300 block overflow-x-auto font-mono text-[11.5px] leading-normal; 
+    word-break: normal;
+    white-space: pre;
+  }
+  .markdown-body code:not(pre code) { 
+    @apply bg-primary/5 text-primary/90 px-1 py-0.5 rounded font-mono text-[10.5px] font-bold border border-primary/10; 
+  }
+  
+  /* Headers - Scaled Down */
+  .markdown-body h1 { @apply text-sm font-black mb-2 mt-4 text-foreground uppercase tracking-wider; }
+  .markdown-body h2 { @apply text-[13px] font-bold mb-1.5 mt-3 text-foreground; }
+  .markdown-body h3 { @apply text-[12px] font-bold mb-1 mt-2 text-foreground/90; }
+  
+  .markdown-body ul, .markdown-body ol { @apply mb-2 ml-4; }
+  .markdown-body ul { @apply list-disc; }
+  .markdown-body ol { @apply list-decimal; }
+  .markdown-body li { @apply mb-0.5 last:mb-0; }
+  
+  .markdown-body blockquote { 
+    @apply border-l-2 border-primary/30 pl-3 py-0.5 italic text-muted-foreground/80 bg-primary/5 rounded-r-md mb-2; 
   }
 }
 
-@keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+/* Animations - Faster and Subtler */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
 }
 
-.animate-pulse-soft {
-  animation: pulse-soft 3s ease-in-out infinite;
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+/* Fix TitleBar Padding for all screens */
+main {
+  padding-top: 40px; 
 }

@@ -7,6 +7,19 @@ class UIState {
     actions: []
   });
 
+  dialog = $state({
+    visible: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    cancelLabel: 'Cancel',
+    onConfirm: null,
+    onCancel: null,
+    variant: 'default' // 'default', 'danger'
+  });
+
+  draggedItem = $state(null);
+
   editorStatus = $state({
     line: 1,
     column: 1,
@@ -31,6 +44,23 @@ class UIState {
 
   closeContextMenu() {
     this.contextMenu.visible = false;
+  }
+
+  showDialog(config) {
+    this.dialog = {
+      visible: true,
+      title: config.title || 'Are you sure?',
+      message: config.message || '',
+      confirmLabel: config.confirmLabel || 'Confirm',
+      cancelLabel: config.cancelLabel || 'Cancel',
+      onConfirm: config.onConfirm || null,
+      onCancel: config.onCancel || null,
+      variant: config.variant || 'default'
+    };
+  }
+
+  closeDialog() {
+    this.dialog.visible = false;
   }
 }
 

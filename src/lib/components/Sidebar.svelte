@@ -1,6 +1,7 @@
 <script>
   import { fsStore } from '../stores/fileSystem.svelte.js';
   import { open } from '@tauri-apps/plugin-dialog';
+  import { invoke } from '@tauri-apps/api/core';
   import { FolderOpen, Plus, MoreHorizontal, ChevronDown } from 'lucide-svelte';
   import FileTreeItem from './FileTreeItem.svelte';
   import ContextMenu from './ContextMenu.svelte';
@@ -12,7 +13,20 @@
         multiple: false 
       });
       if (selected) {
+        console.log('Folder selected:', selected);
         await fsStore.setProjectDir(selected);
+        
+        // Save to recent folders using Tauri commands directly
+        console.log('Saving to recent folders...');
+        const folderName = selected.split('/').pop() || selected;
+        
+        try {
+          await invoke('add_recent_folder', { path: selected, name: folderName });
+          await invoke('set_last_workspace', { path: selected });
+          console.log('Saved to recent folders and last workspace');
+        } catch (err) {
+          console.error('Failed to save to storage:', err);
+        }
       }
     } catch (e) {
       console.error('Failed to open folder', e);
