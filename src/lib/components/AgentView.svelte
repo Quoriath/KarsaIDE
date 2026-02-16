@@ -4,11 +4,16 @@
   import { listen } from '@tauri-apps/api/event';
   import { configStore } from '../stores/config.svelte.js';
   import { fsStore } from '../stores/fileSystem.svelte.js';
-  import { Send, Bot, User, Sparkles, Loader2, Plus, Settings, Search, MessageSquare, Trash2, ChevronDown } from 'lucide-svelte';
+  import { 
+    Send, Bot, User, Sparkles, Loader2, Plus, Settings, Search, 
+    MessageSquare, Trash2, ChevronDown, Copy, Check, Pencil, 
+    RotateCcw, Square, MoreHorizontal, Download, Share2, FolderTree
+  } from 'lucide-svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
   import ModelSelector from './ModelSelector.svelte';
   import ThinkingBlock from './Chat/ThinkingBlock.svelte';
   import ToolExecution from './Chat/ToolExecution.svelte';
+  import MCPToolCall from './MCPToolCall.svelte';
   import { cn } from '../utils.js';
 
   // --- STATE MANAGEMENT ---
@@ -16,8 +21,8 @@
   let activeConversationId = $state(null);
   let messages = $state([]); 
   
-  // Virtualization
-  let visibleMessages = $derived(messages.length > 50 ? messages.slice(messages.length - 50) : messages);
+  // Virtualization - load more messages for context
+  let visibleMessages = $derived(messages.length > 100 ? messages.slice(messages.length - 100) : messages);
   
   let searchQuery = $state('');
   let input = $state('');
@@ -27,11 +32,19 @@
   // Streaming Buffers
   let streamingContent = $state(''); 
   let streamingReasoning = $state('');
-  let activeToolCall = $state(null);
+  let streamingToolCalls = $state([]);
   let completedTools = $state([]);
+  
+  // UI State
+  let editingTitle = $state(false);
+  let editingTitleValue = $state('');
+  let copiedMessageId = $state(null);
+  let showContextMenu = $state(null);
+  let regenerateFromIndex = $state(null);
   
   let messagesContainer;
   let scrollAnchor;
+  let inputTextarea;
   let unlistenHandlers = [];
 
   // Persistent Config
@@ -66,26 +79,19 @@
     });
 
     const unlistenToolResult = await listen('ai-tool-result', (event) => {
-      const result = event.payload;
-      // Update last tool call with result
       if (streamingToolCalls.length > 0) {
         const lastIndex = streamingToolCalls.length - 1;
         streamingToolCalls[lastIndex] = {
           ...streamingToolCalls[lastIndex],
           executing: false,
-          result: result.result,
-          error: result.error
-        };
-        streamingToolCalls = [...streamingToolCalls]; // Trigger reactivity
-      }
-      scrollToBottom();
-    }); 
-          ...activeToolCall, 
-          result: event.payload.result, 
-          status: event.payload.isError ? 'error' : 'success',
+          result: event.payload.result,
           error: event.payload.isError ? event.payload.result : null
+        };
+        streamingToolCalls = [...streamingToolCalls];
+        completedTools = [...completedTools, {
+          ...streamingToolCalls[lastIndex],
+          status: event.payload.isError ? 'error' : 'success'
         }];
-        activeToolCall = null;
       }
       scrollToBottom();
     });
@@ -104,8 +110,8 @@
       }
       streamingContent = '';
       streamingReasoning = '';
+      streamingToolCalls = [];
       completedTools = [];
-      activeToolCall = null;
       isLoading = false;
       scrollToBottom();
     });
@@ -128,7 +134,7 @@
     showScrollButton = scrollHeight - scrollTop - clientHeight > 200;
   }
 
-  // --- DATABASE ACTIONS (Same as before) ---
+  // --- DATABASE ACTIONS ---
   async function loadConversations() {
     try { conversations = await invoke('get_conversations', { mode: 'all', limit: 50 }); } catch (e) {}
   }
@@ -167,6 +173,113 @@
       }
     } catch (e) {}
   }
+  
+  // --- CONVERSATION MANAGEMENT ---
+  async function renameConversation(id, newTitle) {
+    try {
+      await invoke('update_conversation_title', { id, title: newTitle });
+      await loadConversations();
+    } catch (e) {}
+  }
+  
+  async function exportConversation(id) {
+    try {
+      const conv = conversations.find(c => c.id === id);
+      const msgs = await invoke('get_messages', { conversationId: id });
+      const exportData = {
+        title: conv?.title || 'Exported Chat',
+        exportedAt: new Date().toISOString(),
+        model: selectedModel,
+        messages: msgs.map(m => ({
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.timestamp * 1000).toISOString()
+        }))
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${conv?.title || 'chat'}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {}
+  }
+  
+  // --- MESSAGE ACTIONS ---
+  async function copyMessage(content, id) {
+    try {
+      await navigator.clipboard.writeText(content);
+      copiedMessageId = id;
+      setTimeout(() => copiedMessageId = null, 2000);
+    } catch (e) {}
+  }
+  
+  async function regenerateResponse(index) {
+    if (isLoading || index < 1) return;
+    const userMsg = messages[index - 1];
+    if (userMsg?.role !== 'user') return;
+    
+    messages = messages.slice(0, index);
+    isLoading = true;
+    streamingContent = '';
+    streamingReasoning = '';
+    streamingToolCalls = [];
+    completedTools = [];
+    
+    try {
+      const mcpPrompt = await invoke('mcp_get_system_prompt');
+      const systemInfo = `
+====
+SYSTEM INFORMATION
+Operating System: ${navigator.platform}
+Current Workspace: ${fsStore.activeWorkspace || 'No workspace open'}
+Active File: ${fsStore.activeFile?.name || 'None'}
+====
+`;
+      const systemPrompt = mcpPrompt + systemInfo;
+      const msgs = [
+        { role: 'system', content: systemPrompt },
+        ...messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMsg.content }
+      ];
+      
+      const config = {
+        provider: configStore.settings.ai.provider,
+        api_key: configStore.settings.ai.apiKey,
+        base_url: configStore.settings.ai.baseUrl || 'https://api.kilo.ai/api/gateway/chat/completions',
+        model_name: selectedModel,
+        custom_models: []
+      };
+      
+      await invoke('send_agent_message_stream', { messages: msgs, config: config });
+    } catch (e) {
+      messages = [...messages, { role: 'assistant', content: `**Error**: ${e}`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }];
+      isLoading = false;
+    }
+  }
+  
+  async function stopGeneration() {
+    try {
+      await invoke('stop_stream');
+      if (streamingContent) {
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        messages = [...messages, { 
+          role: 'assistant', 
+          content: streamingContent + '\n\n*[Generation stopped]*', 
+          reasoning: streamingReasoning,
+          tools: [...completedTools], 
+          timestamp 
+        }];
+        await saveMessage('assistant', streamingContent);
+      }
+    } catch (e) {}
+    streamingContent = '';
+    streamingReasoning = '';
+    streamingToolCalls = [];
+    completedTools = [];
+    isLoading = false;
+  }
 
   function getGroupedConversations() {
     if (!searchQuery) {
@@ -196,8 +309,8 @@
     input = '';
     streamingContent = ''; 
     streamingReasoning = '';
+    streamingToolCalls = [];
     completedTools = [];
-    activeToolCall = null;
     
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     messages = [...messages, { role: 'user', content: userMessage, timestamp }];

@@ -57,6 +57,7 @@ pub fn run() {
             get_shell_info,
             spawn_terminal,
             write_to_terminal,
+            close_terminal,
             mcp_execute,
             mcp_get_tools,
             mcp_get_system_prompt,

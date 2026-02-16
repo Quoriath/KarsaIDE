@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize, Child};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
@@ -6,10 +6,12 @@ use anyhow::Result;
 
 pub struct Terminal {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
+    session_id: String,
 }
 
 impl Terminal {
-    pub fn spawn(app: AppHandle, shell: Option<String>) -> Result<Self> {
+    pub fn spawn(app: AppHandle, session_id: String, shell: Option<String>) -> Result<Self> {
         let pty_system = native_pty_system();
         
         let pair = pty_system.openpty(PtySize {
@@ -28,33 +30,44 @@ impl Terminal {
         cmd.env("POWERLEVEL9K_INSTANT_PROMPT", "quiet");
         
         let child = pair.slave.spawn_command(cmd)?;
+        let child = Arc::new(Mutex::new(child));
         
         let reader = pair.master.try_clone_reader()?;
         let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
         let writer_clone = writer.clone();
+        let child_clone = child.clone();
+        let session_id_clone = session_id.clone();
 
-        // Spawn reader thread with immediate output
+        // Spawn reader thread with exit detection
         std::thread::spawn(move || {
             let mut reader = reader;
             let mut buffer = [0u8; 1024];
             loop {
                 match reader.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let _ = app.emit("terminal-output", buffer[..n].to_vec());
+                    Ok(0) => {
+                        // EOF - process exited
+                        let _ = app.emit("terminal-exit", session_id_clone.clone());
+                        break;
                     }
-                    Err(_) => break,
+                    Ok(n) => {
+                        let _ = app.emit("terminal-output", serde_json::json!({
+                            "id": session_id_clone,
+                            "data": buffer[..n].to_vec()
+                        }));
+                    }
+                    Err(_) => {
+                        let _ = app.emit("terminal-exit", session_id_clone.clone());
+                        break;
+                    }
                 }
             }
         });
 
-        // Monitor child in separate thread (not tokio)
-        std::thread::spawn(move || {
-            let mut child_mut = child;
-            let _ = child_mut.wait();
-        });
-
-        Ok(Self { writer: writer_clone })
+        Ok(Self { 
+            writer: writer_clone,
+            child: child_clone,
+            session_id,
+        })
     }
 
     pub fn write(&self, data: &[u8]) -> Result<()> {
@@ -62,6 +75,14 @@ impl Terminal {
         writer.write_all(data)?;
         writer.flush()?;
         Ok(())
+    }
+    
+    pub fn is_alive(&self) -> bool {
+        if let Ok(mut child) = self.child.try_lock() {
+            child.try_wait().map(|status| status.is_none()).unwrap_or(false)
+        } else {
+            true
+        }
     }
 
     #[allow(dead_code)]

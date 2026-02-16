@@ -553,7 +553,7 @@ pub fn spawn_terminal(
     shell: Option<String>,
     state: State<'_, TerminalState>,
 ) -> Result<(), String> {
-    let terminal = Terminal::spawn(app, shell)
+    let terminal = Terminal::spawn(app, id.clone(), shell)
         .map_err(|e| format!("Failed to spawn terminal: {}", e))?;
     
     state.terminals.lock().unwrap().insert(id, terminal);
@@ -573,6 +573,15 @@ pub fn write_to_terminal(
     } else {
         Err("Terminal not found".to_string())
     }
+}
+
+#[command]
+pub fn close_terminal(
+    id: String,
+    state: State<'_, TerminalState>,
+) -> Result<(), String> {
+    state.terminals.lock().unwrap().remove(&id);
+    Ok(())
 }
 
 // Intelligence commands
