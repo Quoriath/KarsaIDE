@@ -1,13 +1,29 @@
 <script>
   import { 
     FileText, Search, List, Code, File, FolderOpen, 
-    Loader2, CheckCircle2, XCircle, ChevronDown 
+    Loader2, CheckCircle2, XCircle, ChevronDown, AlertTriangle,
+    Play, Pause, RotateCcw
   } from 'lucide-svelte';
   import { cn } from '../utils.js';
 
-  let { toolName, arguments: args, result, error, executing = false } = $props();
+  let { 
+    toolName, 
+    arguments: args, 
+    result, 
+    error, 
+    executing = false,
+    confirmed = true,
+    onConfirm,
+    onCancel
+  } = $props();
   
   let expanded = $state(false);
+  let localConfirmed = $state(true);
+  
+  // Auto-expand on error
+  $effect(() => {
+    if (error) expanded = true;
+  });
   
   const toolIcons = {
     file_read: FileText,
@@ -36,6 +52,17 @@
   
   const Icon = toolIcons[toolName] || Code;
   
+  // Destructive tools need confirmation
+  const destructiveTools = ['file_delete', 'file_move', 'file_copy', 'smart_patch'];
+  const needsConfirmation = destructiveTools.includes(toolName);
+  
+  const status = $derived(
+    executing ? 'running' : 
+    error ? 'error' : 
+    result ? 'done' : 
+    (needsConfirmation && !localConfirmed) ? 'pending' : 'ready'
+  );
+  
   function formatArgs(args) {
     if (!args || Object.keys(args).length === 0) return '';
     return Object.entries(args)
@@ -43,11 +70,15 @@
       .join(', ');
   }
   
-  const status = $derived(
-    executing ? 'running' : 
-    error ? 'error' : 
-    result ? 'done' : 'pending'
-  );
+  function handleConfirm() {
+    localConfirmed = true;
+    onConfirm?.();
+  }
+  
+  function handleCancel() {
+    localConfirmed = false;
+    onCancel?.();
+  }
   
   const resultPreview = $derived(() => {
     if (!result) return '';
@@ -98,6 +129,16 @@
     
     <ChevronDown size={14} class="tool-chevron {expanded ? 'expanded' : ''}" />
   </button>
+
+  <!-- Confirmation for destructive tools -->
+  {#if needsConfirmation && !localConfirmed && !executing && !result && !error}
+    <div class="tool-confirmation">
+      <AlertTriangle size={14} class="text-amber-500" />
+      <span class="text-sm">This will modify files. Confirm?</span>
+      <button class="btn-confirm" onclick={handleConfirm}>Confirm</button>
+      <button class="btn-cancel" onclick={handleCancel}>Cancel</button>
+    </div>
+  {/if}
 
   {#if expanded}
     <div class="tool-content">
@@ -298,5 +339,40 @@
   .tool-code.error {
     color: hsl(var(--destructive));
     background: hsl(var(--destructive) / 0.1);
+  }
+  
+  .tool-confirmation {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: hsl(38 92% 50% / 0.1);
+    border-top: 1px solid hsl(38 92% 50% / 0.2);
+  }
+  
+  .btn-confirm {
+    padding: 0.25rem 0.75rem;
+    background: hsl(142 76% 36%);
+    color: white;
+    font-size: 0.75rem;
+    border-radius: 0.25rem;
+    transition: background 0.15s;
+  }
+  
+  .btn-confirm:hover {
+    background: hsl(142 76% 30%);
+  }
+  
+  .btn-cancel {
+    padding: 0.25rem 0.75rem;
+    background: hsl(var(--destructive));
+    color: white;
+    font-size: 0.75rem;
+    border-radius: 0.25rem;
+    transition: background 0.15s;
+  }
+  
+  .btn-cancel:hover {
+    background: hsl(var(--destructive) / 0.8);
   }
 </style>

@@ -347,10 +347,24 @@
     scrollToBottom();
     
     try {
-      const cwd = fsStore.activeWorkspace || '.';
+      // Check if user needs workspace for file-related queries
+      const fileKeywords = ['file', 'folder', 'project', 'directory', 'baca', 'lihat', 'strukture', 'kode', 'code', 'read', 'open'];
+      const needsWorkspace = fileKeywords.some(kw => userMessage.toLowerCase().includes(kw));
+      const cwd = fsStore.activeWorkspace || '';
+      
+      if (needsWorkspace && !cwd) {
+        messages = [...messages, { 
+          role: 'assistant', 
+          content: 'Untuk mengakses file, silakan buka folder proyek terlebih dahulu.\n\nKlik **Open Folder** di sidebar atau tekan `Ctrl+O` untuk memilih folder proyek.', 
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+        }];
+        isLoading = false;
+        return;
+      }
+      
       const mcpPrompt = await invoke('mcp_get_system_prompt', { 
         mode: 'code', 
-        cwd: cwd 
+        cwd: cwd || 'no-workspace'
       });
       
       const msgs = [
@@ -389,14 +403,14 @@
     isLoading = true;
     streamingContent = '';
     streamingReasoning = '';
-    streamingSegments = []; currentSegmentText = "";
-    
+    streamingSegments = [];
+    currentSegmentText = '';
     
     try {
-      const cwd = fsStore.activeWorkspace || '.';
+      const cwd = fsStore.activeWorkspace || '';
       const mcpPrompt = await invoke('mcp_get_system_prompt', { 
         mode: 'code', 
-        cwd: cwd 
+        cwd: cwd || 'no-workspace'
       });
       
       const msgs = [
@@ -524,10 +538,20 @@
     <header class="h-14 border-b border-border flex items-center justify-between px-6 bg-background/80 backdrop-blur-md sticky top-0 z-20 shadow-sm transition-all duration-300">
       <div class="flex items-center gap-4">
         <div class="w-64"><ModelSelector bind:selectedModel apiKey={configStore.settings.ai.apiKey} onModelChange={(m) => configStore.updateAiConfig({ selectedModel: m.id })} /></div>
-        {#if messages.length > 0}
-          <div class="text-xs text-muted-foreground flex items-center gap-1">
+        {#if fsStore.activeWorkspace}
+          <div class="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-md border border-border/50">
             <FolderTree size={12} />
-            <span>{messages.length} messages</span>
+            <span class="truncate max-w-[200px]">{fsStore.activeWorkspace.split('/').pop()}</span>
+          </div>
+        {:else}
+          <div class="text-xs text-yellow-500/80 flex items-center gap-1.5 bg-yellow-500/10 px-2 py-1 rounded-md border border-yellow-500/20">
+            <FolderTree size={12} />
+            <span>No workspace</span>
+          </div>
+        {/if}
+        {#if messages.length > 0}
+          <div class="text-xs text-muted-foreground">
+            {messages.length} msgs
           </div>
         {/if}
       </div>

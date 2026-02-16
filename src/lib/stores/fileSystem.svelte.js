@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 class FileSystemStore {
   currentProjectDir = $state(null);
+  activeWorkspace = $state(null);
   openFiles = $state([]);
   activeFile = $state(null);
   activeFileContent = $state('');
@@ -10,6 +11,7 @@ class FileSystemStore {
 
   async setProjectDir(path) {
     this.currentProjectDir = path;
+    this.activeWorkspace = path;
     await this.refreshDirectory(path);
   }
 
