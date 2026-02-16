@@ -228,6 +228,7 @@ npm test
 
 ## 📚 Documentation
 
+- [Natural Conversation Flow](./NATURAL_FLOW.md) - **NEW!** AI chat with inline tool execution
 - [Backend Implementation](./BACKEND_IMPLEMENTATION.md)
 - [Frontend Implementation](./FRONTEND_IMPLEMENTATION.md)
 - [API Reference](./docs/API.md)
